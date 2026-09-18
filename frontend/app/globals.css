@@ -1,26 +1,551 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   Wealthify design tokens
+   Source of truth: DESIGN.md. The page theme is locked to the light canvas:
+   DESIGN.md's system is a white canvas with navy hero bands and it does not
+   surface dark-mode token values, so we do not flip on prefers-color-scheme
+   (see taste-skill 4.11 "Page Theme Lock").
+   ========================================================================= */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+
+  /* Surfaces */
+  --canvas: #ffffff;
+  --surface: #f6f5f4;
+  --surface-soft: #fafaf9;
+  --hairline: #e5e3df;
+  --hairline-soft: #ede9e4;
+  --hairline-strong: #c8c4be;
+
+  /* Text */
+  --ink: #1a1a1a;
+  --charcoal: #37352f;
+  --slate: #5d5b54;
+  --steel: #787671;
+  --stone: #a4a097;
+  --muted: #bbb8b1;
+
+  /* Brand */
+  --navy: #0a1530;
+  --navy-deep: #070f24;
+  --navy-mid: #1a2a52;
+  --primary: #5645d4;
+  --primary-pressed: #4534b3;
+  --primary-deep: #3a2a99;
+  --link-blue: #0075de;
+  --on-dark: #ffffff;
+  --on-dark-muted: #a4a097;
+
+  /* Brand spectrum (hero band decoration) */
+  --brand-pink: #ff64c8;
+  --brand-orange: #dd5b00;
+  --brand-teal: #2a9d99;
+  --brand-yellow: #f5d75e;
+  --brand-purple: #7b3ff2;
+
+  /* Semantic */
+  --success: #1aae39;
+
+  /* Card tints */
+  --tint-mint: #d9f3e1;
+  --tint-sky: #dcecfa;
+
+  /* --------------------------------------------------------------------------
+     transitions-dev: shared motion tokens
+     Reference these as var(--...) anywhere; the snippets below ship literal
+     values so each one stands alone.
+     ------------------------------------------------------------------------ */
+  --duration-stagger: 40ms; /* per-item stagger offset */
+  --duration-micro: 80ms; /* tooltip/path delay, shake segment, large stagger */
+  --duration-quick: 150ms; /* modal/dropdown close, text swap, tooltip appear */
+  --duration-fast: 250ms; /* icon swap, dropdown/modal open, tabs sliding */
+  --duration-medium: 350ms; /* panel close, toast close */
+  --duration-slow: 400ms; /* panel open, skeleton reveal, input clear */
+  --duration-very-slow: 500ms; /* badge appear, text reveal, success check */
+
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1); /* open + close, resize, position change */
+  --ease-in-out: ease-in-out; /* icon swap, text swap, text reveal */
+  --ease-out: ease-out; /* tooltip open / close */
+  --ease-linear: linear; /* shimmer, skeleton pulse, spinner */
+  --ease-bounce: cubic-bezier(0.34, 1.36, 0.64, 1); /* badge pop open */
+  --ease-bounce-strong: cubic-bezier(0.34, 3.85, 0.64, 1); /* bouncy hover-out */
+
+  --distance-micro: 4px;
+  --distance-small: 6px;
+  --distance-base: 8px;
+  --distance-medium: 12px;
+  --distance-large: 30px;
+
+  --scale-large: 0.96;
+  --scale-medium: 0.97;
+  --scale-small: 0.98;
+  --scale-tiny: 0.99;
+
+  --blur-small: 2px;
+  --blur-medium: 3px;
+  --blur-large: 8px;
+
+  /* transitions-dev #18: texts reveal */
+  --stagger-dur: 500ms;
+  --stagger-distance: 12px;
+  --stagger-stagger: 40ms;
+  --stagger-blur: 3px;
+  --stagger-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* transitions-dev #05: menu dropdown */
+  --dropdown-open-dur: 250ms;
+  --dropdown-close-dur: 150ms;
+  --dropdown-pre-scale: 0.97;
+  --dropdown-closing-scale: 0.99;
+  --dropdown-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* transitions-dev #09: icon swap */
+  --icon-swap-dur: 250ms;
+  --icon-swap-blur: 2px;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: ease-in-out;
+
+  /* transitions-dev #02: number pop-in */
+  --digit-dur: 500ms;
+  --digit-distance: 8px;
+  --digit-stagger: 70ms;
+  --digit-blur: 2px;
+  --digit-ease: cubic-bezier(0.34, 1.45, 0.64, 1);
+  --digit-dir-x: 0;
+  --digit-dir-y: 1;
+
+  /* transitions-dev #04: text states swap */
+  --text-swap-dur: 150ms;
+  --text-swap-translate-y: 4px;
+  --text-swap-blur: 2px;
+  --text-swap-ease: ease-in-out;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-soft: var(--surface-soft);
+  --color-hairline: var(--hairline);
+  --color-hairline-soft: var(--hairline-soft);
+  --color-hairline-strong: var(--hairline-strong);
+
+  --color-ink: var(--ink);
+  --color-charcoal: var(--charcoal);
+  --color-slate: var(--slate);
+  --color-steel: var(--steel);
+  --color-stone: var(--stone);
+  --color-muted: var(--muted);
+
+  --color-navy: var(--navy);
+  --color-navy-deep: var(--navy-deep);
+  --color-navy-mid: var(--navy-mid);
+  --color-primary: var(--primary);
+  --color-primary-pressed: var(--primary-pressed);
+  --color-primary-deep: var(--primary-deep);
+  --color-link: var(--link-blue);
+  --color-on-dark: var(--on-dark);
+  --color-on-dark-muted: var(--on-dark-muted);
+  --color-success: var(--success);
+  --color-tint-mint: var(--tint-mint);
+  --color-tint-sky: var(--tint-sky);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
+  /* Keep anchor targets clear of the floating pill navbar. */
+  scroll-padding-top: 6rem;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Helvetica, sans-serif;
+}
+
+/* transitions-dev #02 - Number pop-in. The keyframes stay at the top level so
+   they resolve globally rather than through a cascade layer. */
+@keyframes t-digit-pop-in {
+  0% {
+    transform: translate(
+      calc(var(--digit-distance) * var(--digit-dir-x)),
+      calc(var(--digit-distance) * var(--digit-dir-y))
+    );
+    opacity: 0;
+    filter: blur(var(--digit-blur));
+  }
+  100% {
+    transform: translate(0, 0);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+/* ============================================================================
+   Component styles
+   Everything here lives in the components layer so Tailwind utilities can
+   still override display/size/spacing from the markup; the snippets keep their
+   own declarations untouched otherwise.
+   ========================================================================= */
+@layer components {
+  /* --------------------------------------------------------------------------
+     Floating pill navbar
+     Layout, radius and spacing stay as Tailwind utilities on the elements.
+     This pair owns only paint + the scroll-state transition, so the two never
+     fight over the same property.
+     ------------------------------------------------------------------------ */
+  .nav-float {
+    transition: transform var(--duration-fast) var(--ease-smooth-out);
+  }
+  .nav-float.is-scrolled {
+    transform: translateY(-6px);
+  }
+
+  /* Glass surface: layered inner highlight plus hairline border for physical
+     edge refraction rather than a flat backdrop-blur smear. */
+  .nav-pill {
+    background-color: rgb(255 255 255 / 0.62);
+    border: 1px solid var(--hairline);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.7),
+      0 1px 2px rgb(15 15 15 / 0.04);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    backdrop-filter: blur(18px) saturate(180%);
+    transition:
+      background-color var(--duration-fast) var(--ease-smooth-out),
+      border-color var(--duration-fast) var(--ease-smooth-out),
+      box-shadow var(--duration-fast) var(--ease-smooth-out);
+  }
+  .nav-pill.is-scrolled {
+    background-color: rgb(255 255 255 / 0.86);
+    border-color: var(--hairline-soft);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.9),
+      0 8px 24px -6px rgb(15 15 15 / 0.12);
+  }
+
+  /* Mobile panel shares the glass recipe with the pill. */
+  .nav-panel {
+    background-color: rgb(255 255 255 / 0.86);
+    border: 1px solid var(--hairline);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.9),
+      0 16px 48px -8px rgb(15 15 15 / 0.16);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    backdrop-filter: blur(18px) saturate(180%);
+  }
+
+  /* Quiet hover feedback for nav links and the menu trigger. */
+  .nav-item {
+    color: var(--steel);
+    transition:
+      color var(--duration-quick) var(--ease-smooth-out),
+      background-color var(--duration-quick) var(--ease-smooth-out);
+  }
+  .nav-item:hover {
+    color: var(--charcoal);
+    background-color: var(--surface);
+  }
+
+  /* DESIGN.md buttons: sober 8px-rectangle geometry, purple primary. */
+  .btn-primary {
+    background-color: var(--primary);
+    color: var(--on-dark);
+    box-shadow: 0 1px 2px rgb(15 15 15 / 0.08);
+    transition:
+      background-color var(--duration-quick) var(--ease-smooth-out),
+      transform var(--duration-quick) var(--ease-smooth-out);
+  }
+  .btn-primary:hover {
+    background-color: var(--primary-pressed);
+  }
+  .btn-primary:active {
+    background-color: var(--primary-deep);
+    transform: scale(var(--scale-small));
+  }
+
+  .btn-ghost {
+    color: var(--charcoal);
+    transition:
+      color var(--duration-quick) var(--ease-smooth-out),
+      background-color var(--duration-quick) var(--ease-smooth-out);
+  }
+  .btn-ghost:hover {
+    color: var(--ink);
+    background-color: var(--surface);
+  }
+
+  .btn-on-dark {
+    background-color: var(--on-dark);
+    color: var(--ink);
+    transition: background-color var(--duration-quick) var(--ease-smooth-out);
+  }
+  .btn-on-dark:hover {
+    background-color: var(--surface);
+  }
+
+  .btn-outline-dark {
+    color: var(--on-dark);
+    border: 1px solid rgb(255 255 255 / 0.28);
+    transition:
+      background-color var(--duration-quick) var(--ease-smooth-out),
+      border-color var(--duration-quick) var(--ease-smooth-out);
+  }
+  .btn-outline-dark:hover {
+    background-color: rgb(255 255 255 / 0.08);
+    border-color: rgb(255 255 255 / 0.45);
+  }
+
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
+
+  /* --------------------------------------------------------------------------
+     transitions-dev #18 - Texts reveal
+     ------------------------------------------------------------------------ */
+  /* Lines start translated down + blurred + invisible; .is-shown
+     on the parent flips them to their resting state. The second
+     line's transition-delay holds it back by --stagger-stagger
+     so the eye lands on the headline first. */
+  .t-stagger-line {
+    display: block;
+    opacity: 0;
+    transform: translateY(var(--stagger-distance));
+    filter: blur(var(--stagger-blur));
+    transition:
+      opacity var(--stagger-dur) var(--stagger-ease),
+      transform var(--stagger-dur) var(--stagger-ease),
+      filter var(--stagger-dur) var(--stagger-ease);
+    will-change: transform, opacity, filter;
+  }
+  .t-stagger-line--2 {
+    transition-delay: calc(var(--stagger-stagger) * 1);
+  }
+  .t-stagger-line--3 {
+    transition-delay: calc(var(--stagger-stagger) * 2);
+  }
+  .t-stagger-line--4 {
+    transition-delay: calc(var(--stagger-stagger) * 3);
+  }
+  .t-stagger-line--5 {
+    transition-delay: calc(var(--stagger-stagger) * 4);
+  }
+
+  .t-stagger.is-shown .t-stagger-line {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+  /* Exit decouples from the stagger: same fade for every line,
+     no Y return, no blur - so the disappearance reads as a
+     single quiet fade instead of a reverse reveal. */
+  .t-stagger.is-hiding .t-stagger-line {
+    opacity: 0;
+    transform: translateY(0);
+    filter: blur(0);
+    transition:
+      opacity 200ms ease,
+      transform 0s linear,
+      filter 0s linear;
+    transition-delay: 0s;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-stagger-line {
+      transition: none !important;
+    }
+  }
+
+  /* The reveal is driven by JS adding .is-shown. Without scripting those lines
+     would stay at opacity 0 forever, so opt the whole nav back to its resting
+     state and let the hover/scroll transitions carry the page. */
+  @media (scripting: none) {
+    .t-stagger-line {
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     transitions-dev #05 - Menu dropdown
+     ------------------------------------------------------------------------ */
+  .t-dropdown {
+    transform-origin: top left;
+    transform: scale(var(--dropdown-pre-scale));
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      transform var(--dropdown-open-dur) var(--dropdown-ease),
+      opacity var(--dropdown-open-dur) var(--dropdown-ease);
+    will-change: transform, opacity;
+  }
+  .t-dropdown[data-origin="top-left"] {
+    transform-origin: top left;
+  }
+  .t-dropdown[data-origin="top-center"] {
+    transform-origin: top center;
+  }
+  .t-dropdown[data-origin="top-right"] {
+    transform-origin: top right;
+  }
+  .t-dropdown[data-origin="bottom-left"] {
+    transform-origin: bottom left;
+  }
+  .t-dropdown[data-origin="bottom-center"] {
+    transform-origin: bottom center;
+  }
+  .t-dropdown[data-origin="bottom-right"] {
+    transform-origin: bottom right;
+  }
+
+  .t-dropdown.is-open {
+    transform: scale(1);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .t-dropdown.is-closing {
+    transform: scale(var(--dropdown-closing-scale));
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      transform var(--dropdown-close-dur) var(--dropdown-ease),
+      opacity var(--dropdown-close-dur) var(--dropdown-ease);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-dropdown {
+      transition: none !important;
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     transitions-dev #09 - Icon swap
+     ------------------------------------------------------------------------ */
+  .t-icon-swap {
+    position: relative;
+    display: inline-grid;
+  }
+  .t-icon-swap .t-icon {
+    grid-area: 1 / 1;
+    transition:
+      opacity var(--icon-swap-dur) var(--icon-swap-ease),
+      filter var(--icon-swap-dur) var(--icon-swap-ease),
+      transform var(--icon-swap-dur) var(--icon-swap-ease);
+    will-change: opacity, filter, transform;
+  }
+  .t-icon-swap[data-state="a"] .t-icon[data-icon="a"],
+  .t-icon-swap[data-state="b"] .t-icon[data-icon="b"] {
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+  .t-icon-swap[data-state="a"] .t-icon[data-icon="b"],
+  .t-icon-swap[data-state="b"] .t-icon[data-icon="a"] {
+    opacity: 0;
+    filter: blur(var(--icon-swap-blur));
+    transform: scale(var(--icon-swap-start-scale));
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-icon-swap .t-icon {
+      transition: none !important;
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     transitions-dev #02 - Number pop-in
+     ------------------------------------------------------------------------ */
+  .t-digit-group {
+    display: inline-flex;
+    align-items: baseline;
+  }
+  .t-digit {
+    display: inline-block;
+    will-change: transform, opacity, filter;
+  }
+  .t-digit-group.is-animating .t-digit {
+    animation: t-digit-pop-in var(--digit-dur) var(--digit-ease) both;
+  }
+  .t-digit-group.is-animating .t-digit[data-stagger="1"] {
+    animation-delay: var(--digit-stagger);
+  }
+  .t-digit-group.is-animating .t-digit[data-stagger="2"] {
+    animation-delay: calc(var(--digit-stagger) * 2);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-digit-group .t-digit {
+      animation: none !important;
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     transitions-dev #04 - Text states swap
+     ------------------------------------------------------------------------ */
+  .t-text-swap {
+    display: inline-block;
+    transform: translateY(0);
+    filter: blur(0);
+    opacity: 1;
+    transition:
+      transform var(--text-swap-dur) var(--text-swap-ease),
+      filter var(--text-swap-dur) var(--text-swap-ease),
+      opacity var(--text-swap-dur) var(--text-swap-ease);
+    will-change: transform, filter, opacity;
+  }
+  .t-text-swap.is-exit {
+    transform: translateY(calc(var(--text-swap-translate-y) * -1));
+    filter: blur(var(--text-swap-blur));
+    opacity: 0;
+  }
+  .t-text-swap.is-enter-start {
+    transform: translateY(var(--text-swap-translate-y));
+    filter: blur(var(--text-swap-blur));
+    opacity: 0;
+    transition: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-text-swap {
+      transition: none !important;
+    }
+  }
+}
+
+/* Solid-fill fallback when the OS asks for less transparency. */
+@media (prefers-reduced-transparency: reduce) {
+  .nav-pill,
+  .nav-panel {
+    background-color: var(--canvas);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Motion above MOTION_INTENSITY 3 must collapse for reduced-motion users. */
+@media (prefers-reduced-motion: reduce) {
+  .nav-float,
+  .nav-float.is-scrolled,
+  .nav-pill,
+  .nav-item,
+  .btn-primary,
+  .btn-ghost,
+  .btn-on-dark,
+  .btn-outline-dark,
+  .t-text-swap,
+  .t-digit {
+    transition: none !important;
+    transform: none !important;
+    animation: none !important;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
 }

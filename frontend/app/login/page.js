@@ -1,19 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import AuthCard from "../../components/auth-card";
-import { login } from "../../lib/auth";
+import { useAuth } from "../../components/auth-provider";
+import { login, safeNextTarget } from "../../lib/auth";
 
 const inputClass =
   "h-11 w-full rounded-lg border border-hairline-strong bg-canvas px-4 text-[16px] text-ink placeholder:text-muted focus-ring";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { status, refresh } = useAuth();
   const [form, setForm] = useState({ identifier: "", password: "" });
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+
+  // Guest-only: a logged-in visitor landing here goes to their destination.
+  useEffect(() => {
+    if (status === "authenticated") router.push(safeNextTarget());
+  }, [status, router]);
 
   const set = (key) => (event) =>
     setForm((prev) => ({ ...prev, [key]: event.target.value }));
@@ -24,7 +31,10 @@ export default function LoginPage() {
     setError("");
     try {
       await login(form);
-      router.push("/profile");
+      // Refresh first so the provider is authenticated before the
+      // protected route renders (avoids a bounce back to /login).
+      await refresh();
+      router.push(safeNextTarget());
     } catch (err) {
       if (err.code === "INVALID_CREDENTIALS") {
         setError("Incorrect email/username or password. Try again.");

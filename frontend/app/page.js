@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { List, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "../components/auth-provider";
 
 const NAV_LINKS = [
   { label: "Features", href: "#features" },
@@ -136,6 +137,13 @@ export default function Home() {
     clearTimeout(closeTimer.current);
     closeTimer.current = setTimeout(() => setMenuClosing(false), closeMs);
   }, []);
+
+  const { status, logout } = useAuth();
+
+  const onLogout = useCallback(async () => {
+    await logout();
+    closeMenu();
+  }, [logout, closeMenu]);
 
   useEffect(() => () => clearTimeout(closeTimer.current), []);
 
@@ -279,18 +287,38 @@ export default function Home() {
 
               {/* Actions */}
               <div className="t-stagger-line t-stagger-line--3 flex items-center gap-1.5 sm:gap-2">
-                <a
-                  href="/login"
-                  className="btn-ghost focus-ring hidden rounded-lg px-4 py-2.5 text-sm font-medium sm:inline-flex"
-                >
-                  Log in
-                </a>
-                <a
-                  href="/signup"
-                  className="btn-primary focus-ring inline-flex items-center rounded-lg px-4 py-2.5 text-sm font-medium"
-                >
-                  Get started
-                </a>
+                {status === "authenticated" ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={onLogout}
+                      className="btn-ghost focus-ring hidden rounded-lg px-4 py-2.5 text-sm font-medium sm:inline-flex"
+                    >
+                      Log out
+                    </button>
+                    <a
+                      href="/dashboard"
+                      className="btn-primary focus-ring inline-flex items-center rounded-lg px-4 py-2.5 text-sm font-medium"
+                    >
+                      Open dashboard
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    <a
+                      href="/login"
+                      className="btn-ghost focus-ring hidden rounded-lg px-4 py-2.5 text-sm font-medium sm:inline-flex"
+                    >
+                      Log in
+                    </a>
+                    <a
+                      href="/signup"
+                      className="btn-primary focus-ring inline-flex items-center rounded-lg px-4 py-2.5 text-sm font-medium"
+                    >
+                      Get started
+                    </a>
+                  </>
+                )}
 
                 <button
                   ref={toggleRef}
@@ -344,20 +372,41 @@ export default function Home() {
             </nav>
 
             <div className="mt-2 grid gap-2 border-t border-hairline p-2 pt-3">
-              <a
-                href="/login"
-                onClick={closeMenu}
-                className="btn-ghost focus-ring rounded-lg px-4 py-2.5 text-center text-sm font-medium"
-              >
-                Log in
-              </a>
-              <a
-                href="/signup"
-                onClick={closeMenu}
-                className="btn-primary focus-ring rounded-lg px-4 py-2.5 text-center text-sm font-medium"
-              >
-                Get started
-              </a>
+              {status === "authenticated" ? (
+                <>
+                  <a
+                    href="/dashboard"
+                    onClick={closeMenu}
+                    className="btn-primary focus-ring rounded-lg px-4 py-2.5 text-center text-sm font-medium"
+                  >
+                    Open dashboard
+                  </a>
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    className="btn-ghost focus-ring rounded-lg px-4 py-2.5 text-center text-sm font-medium"
+                  >
+                    Log out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <a
+                    href="/login"
+                    onClick={closeMenu}
+                    className="btn-ghost focus-ring rounded-lg px-4 py-2.5 text-center text-sm font-medium"
+                  >
+                    Log in
+                  </a>
+                  <a
+                    href="/signup"
+                    onClick={closeMenu}
+                    className="btn-primary focus-ring rounded-lg px-4 py-2.5 text-center text-sm font-medium"
+                  >
+                    Get started
+                  </a>
+                </>
+              )}
             </div>
           </div>
         </div>

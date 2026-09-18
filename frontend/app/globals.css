@@ -516,6 +516,24 @@ body {
       transition: none !important;
     }
   }
+
+  /* --------------------------------------------------------------------------
+     Dashboard drawer — slides in from the left on mobile.
+     ------------------------------------------------------------------------ */
+  .t-drawer {
+    transform: translateX(-100%);
+    transition: transform var(--duration-slow) var(--ease-smooth-out);
+    will-change: transform;
+  }
+  .t-drawer.is-open {
+    transform: translateX(0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-drawer {
+      transition: none !important;
+    }
+  }
 }
 
 /* Solid-fill fallback when the OS asks for less transparency. */

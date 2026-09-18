@@ -1,93 +1,78 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import Link from "next/link";
-import { fetchMe, formatPaise, logout } from "../../lib/auth";
+import { useRouter } from "next/navigation";
+import DashboardShell from "../../components/dashboard-shell";
+import { useAuth } from "../../components/auth-provider";
+import { formatPaise } from "../../lib/auth";
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [data, setData] = useState(null);
-  const [state, setState] = useState("loading");
+  const { status, user, wallet, logout } = useAuth();
 
   useEffect(() => {
-    let cancelled = false;
-    fetchMe()
-      .then((result) => {
-        if (!cancelled) {
-          setData(result);
-          setState("ready");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setState("unauthenticated");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (status === "unauthenticated") router.push("/login?next=/profile");
+  }, [status, router]);
 
-  async function onLogout() {
-    await logout().catch(() => {});
-    router.push("/login");
-  }
-
-  if (state === "loading") {
+  if (status !== "authenticated" || !user) {
     return (
-      <main className="flex min-h-[100dvh] items-center justify-center bg-canvas px-6">
-        <div className="w-full max-w-md rounded-xl border border-hairline bg-canvas p-6 sm:p-8">
-          <div className="h-7 w-40 rounded-lg bg-surface" />
-          <div className="mt-4 h-12 w-56 rounded-lg bg-surface" />
+      <DashboardShell>
+        <div className="rounded-xl border border-hairline bg-canvas p-6 sm:p-8">
+          <div className="flex items-center gap-4">
+            <div className="h-14 w-14 rounded-full bg-hairline-soft" />
+            <div>
+              <div className="h-6 w-40 rounded bg-hairline-soft" />
+              <div className="mt-2 h-4 w-52 rounded bg-hairline-soft" />
+            </div>
+          </div>
           <div className="mt-6 grid grid-cols-2 gap-3">
             <div className="h-16 rounded-lg bg-surface" />
             <div className="h-16 rounded-lg bg-surface" />
           </div>
         </div>
-      </main>
+      </DashboardShell>
     );
   }
 
-  if (state === "unauthenticated") {
-    return (
-      <main className="flex min-h-[100dvh] items-center justify-center bg-canvas px-6">
-        <div className="w-full max-w-md rounded-xl border border-hairline bg-canvas p-6 text-center sm:p-8">
-          <h1 className="text-[22px] font-semibold text-ink">You are logged out</h1>
-          <p className="mt-2 text-sm text-steel">
-            Log in to see your profile and wallet.
-          </p>
-          <Link
-            href="/login"
-            className="btn-primary focus-ring mt-6 inline-flex h-11 items-center justify-center rounded-lg px-5 text-sm font-medium"
-          >
-            Log in
-          </Link>
-        </div>
-      </main>
-    );
-  }
-
-  const { user, wallet } = data;
   const rows = wallet
     ? [
         { label: "Cash", value: formatPaise(wallet.cashBalance) },
         { label: "Savings", value: formatPaise(wallet.savingsBalance) },
         { label: "Total earned", value: formatPaise(wallet.totalEarned) },
         { label: "Total spent", value: formatPaise(wallet.totalSpent) },
+        { label: "Total invested", value: formatPaise(wallet.totalInvested) },
       ]
     : [];
 
+  async function onLogout() {
+    await logout();
+    router.push("/login");
+  }
+
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center bg-canvas px-6 py-16">
-      <div className="w-full max-w-md rounded-xl border border-hairline bg-canvas p-6 sm:p-8">
-        <p className="text-sm text-steel">
+    <DashboardShell>
+      <div className="rounded-xl border border-hairline bg-canvas p-6 sm:p-8">
+        <div className="flex items-center gap-4">
+          <span
+            aria-hidden="true"
+            className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-navy text-xl font-semibold text-on-dark"
+          >
+            {user.username.slice(0, 1).toUpperCase()}
+          </span>
+          <div>
+            <h1 className="text-[24px] font-semibold tracking-[-0.01em] text-ink">
+              {user.username}
+            </h1>
+            <p className="mt-0.5 text-sm text-steel">{user.email}</p>
+          </div>
+        </div>
+
+        <p className="mt-4 inline-flex rounded-full bg-surface px-3 py-1.5 text-[13px] font-medium text-charcoal">
           {user.career} · Level {user.level} · {user.xp} XP
         </p>
-        <h1 className="mt-1 text-[28px] font-semibold tracking-[-0.01em] text-ink">
-          {user.username}
-        </h1>
-        <p className="mt-1 text-sm text-steel">{user.email}</p>
 
-        <div className="mt-6 grid grid-cols-2 gap-3">
+        <div className="mt-6 grid grid-cols-2 gap-3 border-t border-hairline pt-5 lg:grid-cols-3">
           {rows.map((row) => (
             <div key={row.label} className="rounded-lg bg-surface-soft px-4 py-3">
               <p className="text-[13px] font-medium text-steel">{row.label}</p>
@@ -100,10 +85,10 @@ export default function ProfilePage() {
 
         <div className="mt-6 flex gap-2 border-t border-hairline pt-5">
           <Link
-            href="/"
+            href="/dashboard"
             className="btn-ghost focus-ring inline-flex h-11 flex-1 items-center justify-center rounded-lg px-4 text-sm font-medium"
           >
-            Home
+            Dashboard
           </Link>
           <button
             type="button"
@@ -114,6 +99,6 @@ export default function ProfilePage() {
           </button>
         </div>
       </div>
-    </main>
+    </DashboardShell>
   );
 }

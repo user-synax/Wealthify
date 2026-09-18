@@ -36,3 +36,23 @@ export const fetchMe = () => request("/api/auth/me");
 // Balances arrive as integer paise (PRD); only the UI formats them.
 const inr = new Intl.NumberFormat("en-IN");
 export const formatPaise = (paise) => `₹${inr.format(Math.round(paise / 100))}`;
+
+// Where to send the user after login/signup. Honours the `?next=` hint set
+// by the route guard, but only for same-origin app paths.
+export function safeNextTarget(fallback = "/dashboard") {
+  try {
+    const next = new URLSearchParams(window.location.search).get("next");
+    if (
+      typeof next === "string" &&
+      next.startsWith("/") &&
+      !next.startsWith("//") &&
+      !next.startsWith("/login") &&
+      !next.startsWith("/signup")
+    ) {
+      return next;
+    }
+  } catch {
+    // Non-browser context or malformed URL: fall through.
+  }
+  return fallback;
+}

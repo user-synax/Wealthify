@@ -280,13 +280,13 @@ export default function Home() {
               {/* Actions */}
               <div className="t-stagger-line t-stagger-line--3 flex items-center gap-1.5 sm:gap-2">
                 <a
-                  href="#log-in"
+                  href="/login"
                   className="btn-ghost focus-ring hidden rounded-lg px-4 py-2.5 text-sm font-medium sm:inline-flex"
                 >
                   Log in
                 </a>
                 <a
-                  href="#get-started"
+                  href="/signup"
                   className="btn-primary focus-ring inline-flex items-center rounded-lg px-4 py-2.5 text-sm font-medium"
                 >
                   Get started
@@ -345,14 +345,14 @@ export default function Home() {
 
             <div className="mt-2 grid gap-2 border-t border-hairline p-2 pt-3">
               <a
-                href="#log-in"
+                href="/login"
                 onClick={closeMenu}
                 className="btn-ghost focus-ring rounded-lg px-4 py-2.5 text-center text-sm font-medium"
               >
                 Log in
               </a>
               <a
-                href="#get-started"
+                href="/signup"
                 onClick={closeMenu}
                 className="btn-primary focus-ring rounded-lg px-4 py-2.5 text-center text-sm font-medium"
               >
@@ -410,7 +410,7 @@ export default function Home() {
               </p>
               <div className="t-stagger-line t-stagger-line--3 mt-9 flex flex-wrap items-center justify-center gap-3">
                 <a
-                  href="#get-started"
+                  href="/signup"
                   className="btn-on-dark focus-ring inline-flex rounded-lg px-5 py-3 text-sm font-medium"
                 >
                   Create your free account

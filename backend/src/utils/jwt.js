@@ -20,9 +20,9 @@ import {
        "our secret" and "our session".
 
    Expiry comes from config (7 days by default). The cookie is httpOnly so no
-   script can read it, SameSite=Lax so a cross-site POST cannot carry it (which
-   is what makes the API CSRF-resistant without a token dance), and Secure in
-   production so it never crosses plaintext.
+  script can read it. SameSite=None is required because the frontend and API
+  use different sites in production, and Secure ensures it never crosses
+  plaintext. The API's origin guard protects state-changing requests.
    -------------------------------------------------------------------------- */
 
 const ISSUER = "wealthify";
@@ -46,7 +46,7 @@ export function verifyToken(token) {
 function baseCookieOptions() {
   return {
     httpOnly: true,
-    sameSite: "lax",
+    sameSite: config.isProd ? "none" : "lax",
     secure: config.isProd,
     path: "/",
     maxAge: AUTH_COOKIE_MAX_AGE_MS,

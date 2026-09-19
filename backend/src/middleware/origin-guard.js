@@ -3,10 +3,9 @@ import { config } from "../config.js";
 /* ----------------------------------------------------------------------------
    Origin guard — defence in depth for the cookie-based session.
 
-   The API is already resistant to CSRF by construction: the session cookie is
-   SameSite=Lax, so a browser will not attach it to a cross-site POST, and CORS
-   only answers the app's own origin. Both of those are protections the *browser*
-   has to honour correctly.
+  CORS only answers the app's own origin, and the cookie's production
+  SameSite=None setting allows the separately hosted frontend to call the API.
+  The origin check below is therefore the server-owned CSRF defence.
 
    This adds one the server owns. Every state-changing request that arrives with
    an `Origin` header must have come from an origin we allow, checked before the

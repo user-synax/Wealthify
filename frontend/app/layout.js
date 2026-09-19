@@ -1,6 +1,8 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "../components/auth-provider";
+import { PaymentFeedbackProvider } from "../components/payment-feedback-provider";
+import { ToastProvider } from "../components/toast-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -25,7 +27,14 @@ export default function RootLayout({ children }) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <AuthProvider>{children}</AuthProvider>
+        {/* Provider order mirrors the dependency: the toast stack can announce
+            a payment, and payment feedback is independent of the session but
+            must wrap the checkout surface that plays it. */}
+        <AuthProvider>
+          <PaymentFeedbackProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </PaymentFeedbackProvider>
+        </AuthProvider>
       </body>
     </html>
   );

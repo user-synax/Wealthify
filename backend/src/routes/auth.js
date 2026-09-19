@@ -4,7 +4,11 @@ import rateLimit from "express-rate-limit";
 import { STARTING_CASH_PAISE } from "../config.js";
 import { User } from "../models/User.js";
 import { Wallet } from "../models/Wallet.js";
+import { Bill } from "../models/Bill.js";
 import { Transaction } from "../models/Transaction.js";
+import { STARTER_BILLS } from "../data/expenses.js";
+import { makeReference } from "../services/ledger.js";
+import { clockJson } from "../services/clock.js";
 import { requireAuth } from "../middleware/auth.js";
 import {
   clearAuthCookie,
@@ -30,6 +34,27 @@ function fieldError(res, fields) {
   return res.status(400).json({ error: { code: "VALIDATION_ERROR", fields } });
 }
 
+function toWalletJson(wallet) {
+  return {
+    cashBalance: wallet.cashBalance,
+    savingsBalance: wallet.savingsBalance,
+    totalEarned: wallet.totalEarned,
+    totalSpent: wallet.totalSpent,
+    totalInvested: wallet.totalInvested,
+    netWorth: wallet.cashBalance + wallet.savingsBalance + wallet.totalInvested,
+  };
+}
+
+/* Login and /me both answer with the same session snapshot, so the client's
+   auth provider has exactly one shape to store no matter how it got there. */
+async function accountSnapshot(user) {
+  const wallet = await Wallet.findOne({ userId: user._id }).lean();
+  return {
+    wallet: wallet ? toWalletJson(wallet) : null,
+    clock: clockJson(user),
+  };
+}
+
 function validateSignup({ username, email, password }) {
   const fields = {};
   if (typeof username !== "string" || username.trim().length < 3 || username.trim().length > 20) {
@@ -50,14 +75,63 @@ function validateSignup({ username, email, password }) {
   return fields;
 }
 
-function toWalletJson(wallet) {
-  return {
-    cashBalance: wallet.cashBalance,
-    savingsBalance: wallet.savingsBalance,
-    totalEarned: wallet.totalEarned,
-    totalSpent: wallet.totalSpent,
-    totalInvested: wallet.totalInvested,
-  };
+/* A new account opens with a wallet, the immutable signup-bonus entry, and a
+   full starter month of bills already due. Seeding the bills here rather than
+   lazily on first read means the ledger and the bill list are created in the
+   same breath as the user, so there is no window where an account exists
+   without its expenses. */
+async function openAccount(user) {
+  const wallet = await Wallet.create({
+    userId: user._id,
+    cashBalance: STARTING_CASH_PAISE,
+    savingsBalance: 0,
+    totalEarned: STARTING_CASH_PAISE,
+    totalSpent: 0,
+    totalInvested: 0,
+    /* Salary is credited when a cycle *rolls over*, so the first payday is at
+       the end of month one. Starting this at 0 is what stops the signup bonus
+       and a salary from landing in the same breath. */
+    lastSalaryCycle: 0,
+  });
+
+  await Transaction.create({
+    userId: user._id,
+    type: "reward",
+    direction: "credit",
+    amount: STARTING_CASH_PAISE,
+    category: "signup_bonus",
+    description: "Welcome bonus",
+    paymentMethod: "system",
+    status: "completed",
+    reference: makeReference(),
+    balanceBefore: 0,
+    balanceAfter: STARTING_CASH_PAISE,
+    simCycle: 0,
+    metadata: {
+      icon: "Gift",
+      merchant: "Wealthify",
+      note: "Starting balance. Now go and earn the rest.",
+    },
+  });
+
+  await Bill.insertMany(
+    STARTER_BILLS.map((bill) => ({
+      userId: user._id,
+      key: bill.key,
+      name: bill.name,
+      category: bill.category,
+      icon: bill.icon,
+      amount: bill.amount,
+      note: bill.note,
+      // `lastPaidCycle: -1` is what makes month one due immediately.
+      dueCycle: 0,
+      lastPaidCycle: -1,
+      autopay: Boolean(bill.autopay),
+      source: "starter",
+    })),
+  );
+
+  return wallet;
 }
 
 // POST /api/auth/signup — creates user + wallet + signup-bonus transaction.
@@ -81,30 +155,24 @@ authRouter.post("/signup", async (req, res, next) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await User.create({ username, email, passwordHash });
-
-    const wallet = await Wallet.create({
-      userId: user._id,
-      cashBalance: STARTING_CASH_PAISE,
-      savingsBalance: 0,
-      totalEarned: STARTING_CASH_PAISE,
-      totalSpent: 0,
-      totalInvested: 0,
+    const now = new Date();
+    const user = await User.create({
+      username,
+      email,
+      passwordHash,
+      simStartedAt: now,
+      lastCycleAt: now,
+      cycle: 0,
     });
 
-    await Transaction.create({
-      userId: user._id,
-      type: "reward",
-      amount: STARTING_CASH_PAISE,
-      category: "signup_bonus",
-      description: "Welcome bonus",
-      balanceBefore: 0,
-      balanceAfter: STARTING_CASH_PAISE,
-      metadata: { source: "signup" },
-    });
+    const wallet = await openAccount(user);
 
     setAuthCookie(res, signToken(user._id));
-    return res.status(201).json({ user: publicUser(user), wallet: toWalletJson(wallet) });
+    return res.status(201).json({
+      user: publicUser(user),
+      wallet: toWalletJson(wallet),
+      clock: clockJson(user),
+    });
   } catch (err) {
     if (err?.code === 11000) {
       return res.status(409).json({ error: { code: "ALREADY_EXISTS" } });
@@ -142,11 +210,10 @@ authRouter.post("/login", async (req, res, next) => {
       return res.status(401).json({ error: { code: "INVALID_CREDENTIALS" } });
     }
 
-    const wallet = await Wallet.findOne({ userId: user._id }).lean();
     setAuthCookie(res, signToken(user._id));
     return res.json({
       user: publicUser(user),
-      wallet: wallet ? toWalletJson(wallet) : null,
+      ...(await accountSnapshot(user)),
     });
   } catch (err) {
     return next(err);
@@ -160,11 +227,7 @@ authRouter.post("/logout", (req, res) => {
 
 authRouter.get("/me", requireAuth, async (req, res, next) => {
   try {
-    const wallet = await Wallet.findOne({ userId: req.user._id }).lean();
-    return res.json({
-      user: publicUser(req.user),
-      wallet: wallet ? toWalletJson(wallet) : null,
-    });
+    return res.json({ user: publicUser(req.user), ...(await accountSnapshot(req.user)) });
   } catch (err) {
     return next(err);
   }

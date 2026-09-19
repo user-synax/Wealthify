@@ -22,3 +22,26 @@ export const config = {
 export const STARTING_CASH_PAISE = 25_000 * 100;
 export const AUTH_COOKIE_NAME = "wealthify_token";
 export const AUTH_COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/* ----------------------------------------------------------------------------
+   Simulated clock (PRD): 1 real day is 1 simulated month. "Cycle" is the
+   integer count of simulated months that have elapsed since signup, so it is
+   the unit every recurring money event is keyed on (salary, bills, streaks).
+
+   Override SIM_MONTH_MS to compress the loop while developing. 10 minutes is
+   a good value: a full payday-to-payday month becomes observable in one
+   sitting. Leave it unset for the PRD's 1 day = 1 month.
+   -------------------------------------------------------------------------- */
+export const SIM_MONTH_MS = (() => {
+  const raw = Number(process.env.SIM_MONTH_MS);
+  if (!Number.isFinite(raw) || raw < 60_000) return 24 * 60 * 60 * 1000;
+  return raw;
+})();
+
+// Largest single payment the simulator will accept (Rs 1 crore). Anything
+// above this is almost certainly bad input rather than a real purchase.
+export const MAX_PAYMENT_PAISE = 10_000_000 * 100;
+
+// Wrong-PIN guard: this many misses locks payments for PIN_LOCK_MS.
+export const PIN_MAX_ATTEMPTS = 5;
+export const PIN_LOCK_MS = 10 * 60 * 1000;

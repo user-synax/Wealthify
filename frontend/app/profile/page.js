@@ -4,8 +4,9 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import DashboardShell from "../../components/dashboard-shell";
+import PaymentSettings from "../../components/payment-settings";
 import { useAuth } from "../../components/auth-provider";
-import { formatPaise } from "../../lib/auth";
+import { formatPaise } from "../../lib/api";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -68,8 +69,15 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <p className="mt-4 inline-flex rounded-full bg-surface px-3 py-1.5 text-[13px] font-medium text-charcoal">
-          {user.career} · Level {user.level} · {user.xp} XP
+        <p className="mt-4 inline-flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-surface px-3 py-1.5 text-[13px] font-medium text-charcoal">
+            {user.career} · Level {user.level} · {user.xp} XP
+          </span>
+          {user.streak > 0 && (
+            <span className="rounded-full bg-[color-mix(in_srgb,var(--brand-orange)_14%,white)] px-3 py-1.5 text-[13px] font-medium text-[var(--brand-orange)]">
+              {user.streak} day streak · best {user.bestStreak}
+            </span>
+          )}
         </p>
 
         <div className="mt-6 grid grid-cols-2 gap-3 border-t border-hairline pt-5 lg:grid-cols-3">
@@ -98,6 +106,10 @@ export default function ProfilePage() {
             Log out
           </button>
         </div>
+      </div>
+
+      <div className="mt-4">
+        <PaymentSettings />
       </div>
     </DashboardShell>
   );

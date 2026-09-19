@@ -10,12 +10,13 @@ import { NextResponse } from "next/server";
 
 const AUTH_COOKIE = "wealthify_token";
 
+// Every signed-in surface. Kept as a list of prefixes so adding a page to the
+// sidebar without adding it here cannot silently publish a private route.
+const PROTECTED = ["/dashboard", "/profile", "/store", "/activity", "/income", "/expenses"];
+
 function isProtected(pathname) {
-  return (
-    pathname === "/dashboard" ||
-    pathname.startsWith("/dashboard/") ||
-    pathname === "/profile" ||
-    pathname.startsWith("/profile/")
+  return PROTECTED.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 }
 
@@ -33,5 +34,12 @@ export function proxy(request) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/profile/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/profile/:path*",
+    "/store/:path*",
+    "/activity/:path*",
+    "/income/:path*",
+    "/expenses/:path*",
+  ],
 };

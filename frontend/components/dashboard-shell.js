@@ -19,19 +19,23 @@ import { useAuth } from "./auth-provider";
 
 const MAIN_LINKS = [
   { href: "/dashboard", label: "Overview", icon: <House size={20} /> },
-  { href: "/profile", label: "Profile", icon: <User size={20} /> },
+  { href: "/income", label: "Income", icon: <Briefcase size={20} /> },
+  { href: "/expenses", label: "Expenses", icon: <Receipt size={20} /> },
+  { href: "/store", label: "Store", icon: <Storefront size={20} /> },
+  { href: "/activity", label: "Activity", icon: <List size={20} /> },
 ];
+
+const ACCOUNT_LINKS = [{ href: "/profile", label: "Profile", icon: <User size={20} /> }];
 
 // Real destinations that do not exist yet. Rendered as inert rows with a
 // Soon badge so the sidebar never promises a page it cannot open.
-const SOON_LINKS = [
-  { label: "Markets", icon: <TrendUp size={20} /> },
-  { label: "Store", icon: <Storefront size={20} /> },
-  { label: "Jobs", icon: <Briefcase size={20} /> },
-  { label: "Activity", icon: <Receipt size={20} /> },
-];
+const SOON_LINKS = [{ label: "Markets", icon: <TrendUp size={20} /> }];
 
-function SidebarBody({ onNavigate }) {
+function isActive(pathname, href) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function SidebarBody({ onNavigate, dueBills }) {
   // usePathname() is null during static prerender; fall back to "" so the
   // active-state check never throws before hydration.
   const pathname = usePathname() ?? "";
@@ -68,8 +72,34 @@ function SidebarBody({ onNavigate }) {
 
       <nav aria-label="Dashboard" className="mt-6 grid gap-1">
         {MAIN_LINKS.map((link) => {
-          const active =
-            pathname === link.href || pathname.startsWith(`${link.href}/`);
+          const active = isActive(pathname, link.href);
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              onClick={onNavigate}
+              aria-current={active ? "page" : undefined}
+              className={`focus-ring flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-sm font-medium transition-colors ${
+                active
+                  ? "bg-surface text-ink"
+                  : "text-steel hover:bg-surface hover:text-charcoal"
+              }`}
+            >
+              {link.icon}
+              {link.label}
+              {typeof dueBills === "number" && link.href === "/expenses" && (
+                <span className="t-num ml-auto rounded-full bg-[color-mix(in_srgb,var(--brand-orange)_16%,white)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--brand-orange)]">
+                  {dueBills}
+                </span>
+              )}
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className="mt-4 grid gap-1 border-t border-hairline pt-4">
+        {ACCOUNT_LINKS.map((link) => {
+          const active = isActive(pathname, link.href);
           return (
             <Link
               key={link.href}
@@ -87,7 +117,7 @@ function SidebarBody({ onNavigate }) {
             </Link>
           );
         })}
-      </nav>
+      </div>
 
       <p className="mt-6 px-3.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone">
         Coming soon
@@ -143,6 +173,16 @@ function SidebarBody({ onNavigate }) {
 export default function DashboardShell({ children }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const panelRef = useRef(null);
+  const { status, bills, refreshWallet } = useAuth();
+  const dueBills = bills?.dueCount;
+
+  /* One sync per shell mount. This is what keeps the simulated clock moving
+     and the due-bill badge honest whichever signed-in page the user lands on,
+     without every page having to remember to do it. */
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    refreshWallet();
+  }, [status, refreshWallet]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -157,7 +197,7 @@ export default function DashboardShell({ children }) {
     <div className="min-h-[100dvh] bg-surface lg:pl-64">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-hairline bg-canvas px-4 py-5 lg:block">
-        <SidebarBody />
+        <SidebarBody dueBills={dueBills} />
       </aside>
 
       {/* Mobile top bar */}
@@ -202,7 +242,7 @@ export default function DashboardShell({ children }) {
           drawerOpen ? "is-open" : ""
         }`}
       >
-        <SidebarBody onNavigate={() => setDrawerOpen(false)} />
+        <SidebarBody dueBills={dueBills} onNavigate={() => setDrawerOpen(false)} />
       </div>
 
       <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">

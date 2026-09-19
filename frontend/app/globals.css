@@ -46,6 +46,8 @@
 
   /* Semantic */
   --success: #1aae39;
+  --semantic-error: #e03131;
+  --semantic-warning: #dd5b00;
 
   /* Card tints */
   --tint-mint: #d9f3e1;
@@ -120,6 +122,63 @@
   --text-swap-translate-y: 4px;
   --text-swap-blur: 2px;
   --text-swap-ease: ease-in-out;
+
+  /* transitions-dev #06: modal open / close — the checkout surface */
+  --modal-open-dur: 250ms;
+  --modal-close-dur: 150ms;
+  --modal-scale: 0.96;
+  --modal-scale-close: 0.96;
+  --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Mobile variant of the same surface, which rises as a bottom sheet. */
+  --sheet-open-dur: 400ms;
+  --sheet-close-dur: 250ms;
+
+  /* transitions-dev #10: success check — the paid moment */
+  --check-dur: 500ms;
+  --check-rotate-from: 80deg;
+  --check-y-amount: 40px;
+  --check-blur-from: 10px;
+  --check-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --check-ease-bob: cubic-bezier(0.34, 1.35, 0.64, 1);
+
+  /* transitions-dev #12: error state shake — wrong PIN, declined payment */
+  --shake-distance: 6px;
+  --shake-overshoot: 4px;
+  --shake-dur-a: 80ms;
+  --shake-dur-b: 60ms;
+  --shake-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --revert-hold: 3000ms;
+  --revert-dur: 280ms;
+
+  /* transitions-dev #16: tabs sliding — store categories, activity filters */
+  --tabs-dur: 250ms;
+  --tabs-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* transitions-dev #14: skeleton reveal */
+  --skel-pulse-dur: 1200ms;
+  --skel-reveal-dur: 400ms;
+  --skel-blur: 2px;
+
+  /* transitions-dev #22: toast */
+  --toast-open: 350ms;
+  --toast-close: 250ms;
+  --toast-distance: 16px;
+  --toast-blur: 2px;
+  --toast-scale: 0.97;
+  --toast-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* transitions-dev #27: toggle — autopay, sound, haptics */
+  --toggle-dur: 300ms;
+  --toggle-travel: 20px;
+  --toggle-ov1: 2px;
+  --toggle-ov2: 1px;
+  --toggle-track: 150ms;
+  --toggle-ease: cubic-bezier(0.34, 1.35, 0.64, 1);
+
+  /* Payment-specific micro-motion, on the same clock as everything above. */
+  --pin-pop-dur: 150ms;
+  --processing-pulse-dur: 900ms;
 }
 
 @theme inline {
@@ -147,6 +206,8 @@
   --color-on-dark: var(--on-dark);
   --color-on-dark-muted: var(--on-dark-muted);
   --color-success: var(--success);
+  --color-error: var(--semantic-error);
+  --color-warning: var(--semantic-warning);
   --color-tint-mint: var(--tint-mint);
   --color-tint-sky: var(--tint-sky);
 
@@ -182,6 +243,130 @@ body {
     transform: translate(0, 0);
     opacity: 1;
     filter: blur(0);
+  }
+}
+
+/* transitions-dev #12 - Error state shake.
+   A multi-segment keyframe where each stop carries its own easing, so each leg
+   follows the cubic-bezier independently. Stops are cumulative fractions of
+   2·A + 2·B (80 + 80 + 60 + 60 = 280ms): 28.57%, 57.14%, 78.57%. Recompute by
+   hand if --shake-dur-a / --shake-dur-b are retuned to a different ratio. */
+@keyframes t-input-shake {
+  0% {
+    transform: translateX(0);
+    animation-timing-function: var(--shake-ease);
+  }
+  28.57% {
+    transform: translateX(var(--shake-distance));
+    animation-timing-function: var(--shake-ease);
+  }
+  57.14% {
+    transform: translateX(calc(var(--shake-distance) * -1));
+    animation-timing-function: var(--shake-ease);
+  }
+  78.57% {
+    transform: translateX(var(--shake-overshoot));
+    animation-timing-function: var(--shake-ease);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+/* transitions-dev #10 - Success check (fade + rotate + blur + Y-bob). */
+@keyframes t-check-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes t-check-rotate {
+  from {
+    transform: rotate(var(--check-rotate-from));
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+@keyframes t-check-blur {
+  from {
+    filter: blur(var(--check-blur-from));
+  }
+  to {
+    filter: blur(0);
+  }
+}
+@keyframes t-check-bob {
+  from {
+    translate: 0 var(--check-y-amount);
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+/* transitions-dev #14 - Skeleton pulse. */
+@keyframes t-skel-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* transitions-dev #27 - Toggle thumb travel with a double-bounce overshoot. */
+@keyframes t-toggle-on {
+  0% {
+    translate: 0 0;
+  }
+  55% {
+    translate: calc(var(--toggle-travel) + var(--toggle-ov1)) 0;
+  }
+  80% {
+    translate: calc(var(--toggle-travel) - var(--toggle-ov2)) 0;
+  }
+  100% {
+    translate: var(--toggle-travel) 0;
+  }
+}
+@keyframes t-toggle-off {
+  0% {
+    translate: var(--toggle-travel) 0;
+  }
+  55% {
+    translate: calc(0px - var(--toggle-ov1)) 0;
+  }
+  80% {
+    translate: var(--toggle-ov2) 0;
+  }
+  100% {
+    translate: 0 0;
+  }
+}
+
+/* Payment: one PIN digit landing. */
+@keyframes t-pin-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Payment: indeterminate progress rail while a charge is in flight. */
+@keyframes t-processing-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
   }
 }
 
@@ -534,6 +719,334 @@ body {
       transition: none !important;
     }
   }
+
+  /* --------------------------------------------------------------------------
+     transitions-dev #06 - Modal open / close
+     The checkout surface. Centre scale on desktop; on small screens the same
+     element rises from the bottom edge as a sheet, which is why the transform
+     is overridden inside the media query rather than duplicated.
+     ------------------------------------------------------------------------ */
+  .t-modal {
+    transform-origin: center;
+    transform: scale(var(--modal-scale));
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      transform var(--modal-open-dur) var(--modal-ease),
+      opacity var(--modal-open-dur) var(--modal-ease);
+    will-change: transform, opacity;
+  }
+  .t-modal.is-open {
+    transform: scale(1);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .t-modal.is-closing {
+    transform: scale(var(--modal-scale-close));
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      transform var(--modal-close-dur) var(--modal-ease),
+      opacity var(--modal-close-dur) var(--modal-ease);
+  }
+
+  /* Backdrop rides the same two clocks as the surface it sits behind. */
+  .t-scrim {
+    opacity: 0;
+    transition: opacity var(--modal-open-dur) var(--modal-ease);
+  }
+  .t-scrim.is-open {
+    opacity: 1;
+  }
+  .t-scrim.is-closing {
+    opacity: 0;
+    transition: opacity var(--modal-close-dur) var(--modal-ease);
+  }
+
+  @media (max-width: 639px) {
+    .t-sheet {
+      transform-origin: bottom center;
+      transform: translateY(100%);
+    }
+    .t-sheet.is-open {
+      transform: translateY(0);
+    }
+    .t-sheet.is-closing {
+      transform: translateY(100%);
+    }
+    .t-sheet,
+    .t-sheet.is-open {
+      transition:
+        transform var(--sheet-open-dur) var(--modal-ease),
+        opacity var(--modal-open-dur) var(--modal-ease);
+    }
+    .t-sheet.is-closing {
+      transition:
+        transform var(--sheet-close-dur) var(--modal-ease),
+        opacity var(--modal-close-dur) var(--modal-ease);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-modal,
+    .t-scrim,
+    .t-sheet {
+      transition: none !important;
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     transitions-dev #10 - Success check
+     The paid moment. Deliberately icon-agnostic: the wrapper owns fade, rotate,
+     blur and the Y-bob, and the glyph inside is a library icon rather than a
+     hand-drawn path, so the stroke-draw half of the snippet is not used here
+     (Phosphor ships filled multi-path glyphs, and faking a dash on those would
+     pre-reveal parts of the icon).
+     ------------------------------------------------------------------------ */
+  .t-success-check {
+    display: inline-block;
+    transform-origin: center;
+    opacity: 0;
+    will-change: transform, opacity, filter;
+  }
+  .t-success-check svg {
+    display: block;
+    overflow: visible;
+  }
+  .t-success-check[data-state="in"] {
+    animation:
+      t-check-fade var(--check-dur) var(--check-ease) forwards,
+      t-check-rotate var(--check-dur) var(--check-ease) forwards,
+      t-check-blur var(--check-dur) var(--check-ease) forwards,
+      t-check-bob var(--check-dur) var(--check-ease-bob) forwards;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-success-check {
+      animation: none !important;
+      opacity: 1;
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     transitions-dev #12 - Error state shake
+     Three orthogonal classes on purpose: .is-error on the wrap shows the
+     message, .is-error on the field paints the border, and .is-shaking is
+     replayed on its own (remove -> reflow -> re-add) so a second wrong PIN
+     shakes again instead of sitting still.
+     ------------------------------------------------------------------------ */
+  .t-input {
+    transition: border-color var(--duration-quick) var(--ease-out);
+    will-change: transform;
+  }
+  .t-input.is-error {
+    transition: border-color var(--revert-dur) var(--ease-out);
+  }
+  .t-error-msg {
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity var(--revert-dur) var(--ease-out),
+      visibility 0s linear var(--revert-dur);
+  }
+  .t-input-wrap.is-error .t-error-msg {
+    opacity: 1;
+    visibility: visible;
+    transition:
+      opacity var(--revert-dur) var(--ease-out),
+      visibility 0s linear 0s;
+  }
+  .t-input.is-shaking {
+    animation: t-input-shake
+      calc(var(--shake-dur-a) * 2 + var(--shake-dur-b) * 2) linear;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-input {
+      animation: none !important;
+      transform: none !important;
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     transitions-dev #16 - Tabs sliding
+     ------------------------------------------------------------------------ */
+  .t-tabs {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 3px;
+    border-radius: 48px;
+    background: var(--surface);
+  }
+  .t-tab {
+    position: relative;
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--steel);
+    cursor: pointer;
+    border-radius: 48px;
+    z-index: 1;
+    white-space: nowrap;
+    transition: color var(--tabs-dur) var(--tabs-ease);
+  }
+  .t-tab:not([aria-selected="true"]):hover,
+  .t-tab[aria-selected="true"] {
+    color: var(--ink);
+  }
+  .t-tabs-pill {
+    position: absolute;
+    top: 3px;
+    left: 0;
+    height: calc(100% - 6px);
+    width: 0;
+    background: var(--canvas);
+    border: 1px solid var(--hairline);
+    border-radius: 48px;
+    transform: translateX(0);
+    transition:
+      transform var(--tabs-dur) var(--tabs-ease),
+      width var(--tabs-dur) var(--tabs-ease);
+    will-change: transform, width;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-tabs-pill,
+    .t-tab {
+      transition: none !important;
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     transitions-dev #14 - Skeleton loader and reveal
+     ------------------------------------------------------------------------ */
+  .t-skel {
+    position: relative;
+    overflow: hidden;
+    background: var(--hairline-soft);
+    animation: t-skel-pulse var(--skel-pulse-dur) var(--ease-linear) infinite;
+  }
+  .t-skel-content {
+    opacity: 0;
+    filter: blur(var(--skel-blur));
+    transition:
+      opacity var(--skel-reveal-dur) var(--ease-in-out),
+      filter var(--skel-reveal-dur) var(--ease-in-out);
+  }
+  .t-skel-content.is-revealed {
+    opacity: 1;
+    filter: blur(0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-skel {
+      animation: none !important;
+    }
+    .t-skel-content {
+      transition: none !important;
+      opacity: 1 !important;
+      filter: none !important;
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     transitions-dev #22 - Toast
+     ------------------------------------------------------------------------ */
+  .t-toast {
+    opacity: 0;
+    transform: translateY(var(--toast-distance)) scale(var(--toast-scale));
+    filter: blur(var(--toast-blur));
+    will-change: transform, opacity, filter;
+    transition:
+      opacity var(--toast-close) var(--toast-ease),
+      transform var(--toast-close) var(--toast-ease),
+      filter var(--toast-close) var(--toast-ease);
+  }
+  .t-toast.is-open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+    transition:
+      opacity var(--toast-open) var(--toast-ease),
+      transform var(--toast-open) var(--toast-ease),
+      filter var(--toast-open) var(--toast-ease);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-toast {
+      transition: none !important;
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     transitions-dev #27 - Toggle
+     ------------------------------------------------------------------------ */
+  .t-toggle {
+    transition: background var(--toggle-track) var(--toggle-ease);
+  }
+  .t-toggle-thumb {
+    translate: 0 0;
+    will-change: translate;
+  }
+  .t-toggle[data-on="true"] .t-toggle-thumb {
+    translate: var(--toggle-travel) 0;
+  }
+  .t-toggle.is-init[data-on="true"] .t-toggle-thumb {
+    animation: t-toggle-on var(--toggle-dur) var(--toggle-ease) both;
+  }
+  .t-toggle.is-init[data-on="false"] .t-toggle-thumb {
+    animation: t-toggle-off var(--toggle-dur) var(--toggle-ease) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-toggle-thumb {
+      animation: none !important;
+    }
+  }
+
+  /* --------------------------------------------------------------------------
+     Payment micro-motion
+     ------------------------------------------------------------------------ */
+  /* Each PIN digit lands with a pop as it is typed, so entering a PIN reads as
+     four separate keystrokes rather than one silent state change. */
+  .t-pin-dot.is-filled {
+    animation: t-pin-pop var(--pin-pop-dur) var(--ease-bounce) both;
+  }
+
+  /* The indeterminate progress rail while a payment is in flight. A real
+     payment is never instantaneous, and a still screen reads as a hang. */
+  .t-processing-bar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--primary),
+      transparent
+    );
+    animation: t-processing-sweep var(--processing-pulse-dur) var(--ease-linear) infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .t-pin-dot.is-filled {
+      animation: none !important;
+    }
+    .t-processing-bar::after {
+      animation: none !important;
+      background: var(--primary);
+      opacity: 0.4;
+    }
+  }
+
+  /* Numeric readouts must never reflow as digits change during an animation. */
+  .t-num {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 /* Solid-fill fallback when the OS asks for less transparency. */
@@ -557,7 +1070,8 @@ body {
   .btn-on-dark,
   .btn-outline-dark,
   .t-text-swap,
-  .t-digit {
+  .t-digit,
+  .t-pin-dot {
     transition: none !important;
     transform: none !important;
     animation: none !important;

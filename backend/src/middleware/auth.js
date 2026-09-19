@@ -9,7 +9,11 @@ export async function requireAuth(req, res, next) {
       return res.status(401).json({ error: { code: "UNAUTHENTICATED" } });
     }
     const payload = verifyToken(token);
-    const user = await User.findById(payload.sub);
+    // paymentPinHash is `select: false`, so it has to be asked for explicitly.
+    // Every payment route needs to compare against it, and loading it here is
+    // cheaper than a second query per payment. It is never serialised: the
+    // client only ever sees the `paymentPinSet` flag.
+    const user = await User.findById(payload.sub).select("+paymentPinHash");
     if (!user) {
       return res.status(401).json({ error: { code: "UNAUTHENTICATED" } });
     }

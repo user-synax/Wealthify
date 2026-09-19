@@ -48,12 +48,12 @@ const CUES = {
     noise: [{ ms: 30, gain: 0.18, lowpass: 1_600 }],
     tones: [{ freq: 1_160, ms: 26, gain: 0.14, type: "square" }],
   },
-  /* One line of the payment sequence. Quiet by design — it fires ten times. */
+  /* One line of the payment sequence. Quiet by design — it fires ten times in
+     a row — and single-voice, because this is the most-repeated cue in the app
+     and the detuned pair that makes the others sound physical would cost four
+     oscillators per tick for an effect nobody can hear 380ms apart. */
   step: {
-    tones: [
-      { freq: 1_320, ms: 34, gain: 0.11, type: "sine" },
-      { freq: 1_980, ms: 26, gain: 0.05, type: "sine", delay: 0.045 },
-    ],
+    tones: [{ freq: 1_320, ms: 34, gain: 0.11, type: "sine", voices: 1 }],
   },
   /* A UPI collect request arriving. The two-note ping a phone makes when
      someone is asking you for money. */
@@ -131,19 +131,29 @@ const CUES = {
   },
 };
 
+/* Patterns are a phone's own vocabulary: a key is one tick, a failure is a
+   repeated thud, money arriving is a short flourish.
+
+   `step` deliberately has no pattern. It fires once per line of the payment
+   sequence, and a device that buzzes ten times while you wait to see whether
+   you were charged is not immersive, it is a nuisance. Haptics here mark
+   *decisions and outcomes*, never progress. */
 const HAPTICS = {
-  key: 10,
+  key: 12,
   keyDelete: [8, 20, 8],
-  step: 6,
-  request: [12, 60, 12],
-  processing: [16, 40, 16],
-  success: [22, 40, 16, 40, 46],
+  request: [14, 60, 14],
+  success: [24, 40, 16, 40, 48],
   credit: [18, 40, 26],
   debit: [28, 40, 14],
   transfer: [14, 30, 20],
   ready: [12, 50, 12],
   error: [60, 60, 60],
 };
+
+/* Which cues may vibrate when the OS asks for reduced motion. Progress and
+   interaction cues are feedback you can live without; whether money moved is
+   not. */
+const ESSENTIAL_HAPTICS = new Set(["success", "credit", "error", "debit"]);
 
 /* Quiet still has to be audible, and loud has to be worth choosing. The base
    gains above sit between the two. */
@@ -159,6 +169,17 @@ const DEFAULTS = Object.freeze({
 
 let audio = null;
 let noiseBuffer = null;
+let lastStepAt = 0;
+let reducedMotion = false;
+
+if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+  const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+  reducedMotion = query.matches;
+  // Some users flip this mid-session; the setting is read, not captured once.
+  query.addEventListener?.("change", (event) => {
+    reducedMotion = event.matches;
+  });
+}
 
 function context() {
   if (typeof window === "undefined") return null;
@@ -203,19 +224,21 @@ function noise(ctx) {
   return buffer;
 }
 
-function tone(ctx, master, { freq, ms, gain, type, delay = 0, endFreq, detune = 7 }) {
+/* `voices` is 2 by default: a detuned pair beating against each other is what
+   makes a tone sound struck rather than generated. Cues that repeat rapidly
+   drop to 1 — see the `step` table entry. */
+function tone(ctx, master, { freq, ms, gain, type, delay = 0, endFreq, detune = 7, voices = 2 }) {
   const start = ctx.currentTime + delay;
   const duration = ms / 1000;
 
-  // Two oscillators, one detuned slightly. A single oscillator reads as a
-  // test tone; a pair beats like something physical.
   const amp = ctx.createGain();
   amp.gain.setValueAtTime(0.0001, start);
   amp.gain.exponentialRampToValueAtTime(gain, start + 0.006);
   amp.gain.exponentialRampToValueAtTime(0.0001, start + duration);
   amp.connect(master);
 
-  for (const cents of [0, detune]) {
+  const offsets = voices === 1 ? [0] : [0, detune];
+  for (const cents of offsets) {
     const osc = ctx.createOscillator();
     osc.type = type;
     osc.detune.setValueAtTime(cents, start);
@@ -228,6 +251,30 @@ function tone(ctx, master, { freq, ms, gain, type, delay = 0, endFreq, detune = 
     osc.start(start);
     osc.stop(start + duration + 0.03);
   }
+}
+
+/* Creating the context, the compressor and the master gain on the very first
+   cue means the first PIN press pays for all three — and on a slow phone that
+   press is the one the user is listening for. Warming it on the first pointer
+   down anywhere moves that cost to a moment nothing is being judged. */
+let warmed = false;
+function warmAudio() {
+  if (warmed) return;
+  warmed = true;
+  context();
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("pointerdown", warmAudio, { once: true, passive: true });
+
+  /* A hidden tab does not suspend the context on its own, so a long-running
+     timer keeps a live audio graph for nobody. Suspending releases the audio
+     thread; the resume on return is instant because nothing was torn down. */
+  document.addEventListener("visibilitychange", () => {
+    if (!audio) return;
+    if (document.hidden) audio.ctx.suspend().catch(() => {});
+    else audio.ctx.resume().catch(() => {});
+  });
 }
 
 function burst(ctx, master, { ms, gain, delay = 0, highpass, lowpass, q }) {
@@ -277,8 +324,21 @@ function applyGain() {
 
 function playCue(name) {
   const cue = CUES[name];
+  if (!cue) return;
+  // Sound from a tab nobody is looking at is noise from another room.
+  if (typeof document !== "undefined" && document.hidden) return;
+
+  /* The sequence tick is the one cue that can double-fire: a slow frame, a
+     remount, a retry. Two ticks inside a beat read as a glitch, so the second
+     is dropped rather than played louder. */
+  if (name === "step") {
+    const now = Date.now();
+    if (now - lastStepAt < 120) return;
+    lastStepAt = now;
+  }
+
   const current = context();
-  if (!cue || !current) return;
+  if (!current) return;
   const { ctx, master } = current;
 
   for (const note of cue.tones ?? []) tone(ctx, master, note);
@@ -287,6 +347,8 @@ function playCue(name) {
 
 function buzz(name) {
   if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") return;
+  // Under reduced motion, only the outcome cues are worth interrupting for.
+  if (reducedMotion && !ESSENTIAL_HAPTICS.has(name)) return;
   const pattern = HAPTICS[name];
   if (!pattern) return;
   try {

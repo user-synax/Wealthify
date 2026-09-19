@@ -16,6 +16,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { useAuth } from "./auth-provider";
+import { useWorkNotifier } from "./work-notifier-provider";
 
 const MAIN_LINKS = [
   { href: "/dashboard", label: "Overview", icon: <House size={20} /> },
@@ -35,7 +36,23 @@ function isActive(pathname, href) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function SidebarBody({ onNavigate, dueBills }) {
+/* transitions-dev #03 — Notification badge.
+
+   Anchored to the nav icon rather than the row, so the dot can pop in without
+   the row reflowing. The old inline count pushed the label sideways as it
+   appeared, which read as the sidebar twitching every time a bill came due. */
+function NavBadge({ count }) {
+  const open = typeof count === "number" && count > 0;
+  return (
+    <span className="t-badge" data-open={open ? "true" : "false"}>
+      <span className="t-badge-dot t-num grid h-[18px] min-w-[18px] place-items-center rounded-full bg-[var(--brand-orange)] px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-canvas">
+        {open ? count : ""}
+      </span>
+    </span>
+  );
+}
+
+function SidebarBody({ onNavigate, badges }) {
   // usePathname() is null during static prerender; fall back to "" so the
   // active-state check never throws before hydration.
   const pathname = usePathname() ?? "";
@@ -85,13 +102,11 @@ function SidebarBody({ onNavigate, dueBills }) {
                   : "text-steel hover:bg-surface hover:text-charcoal"
               }`}
             >
-              {link.icon}
+              <span className="relative shrink-0">
+                {link.icon}
+                <NavBadge count={badges[link.href]} />
+              </span>
               {link.label}
-              {typeof dueBills === "number" && link.href === "/expenses" && (
-                <span className="t-num ml-auto rounded-full bg-[color-mix(in_srgb,var(--brand-orange)_16%,white)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--brand-orange)]">
-                  {dueBills}
-                </span>
-              )}
             </Link>
           );
         })}
@@ -174,7 +189,12 @@ export default function DashboardShell({ children }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const panelRef = useRef(null);
   const { status, bills, refreshWallet } = useAuth();
-  const dueBills = bills?.dueCount;
+  const { readyCount } = useWorkNotifier();
+
+  /* One map rather than a prop per destination: the badge is the same object
+     whatever it counts, and a second badge on a third nav item should not mean
+     a third prop. */
+  const badges = { "/expenses": bills?.dueCount, "/income": readyCount };
 
   /* One sync per shell mount. This is what keeps the simulated clock moving
      and the due-bill badge honest whichever signed-in page the user lands on,
@@ -197,7 +217,7 @@ export default function DashboardShell({ children }) {
     <div className="min-h-[100dvh] bg-surface lg:pl-64">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-hairline bg-canvas px-4 py-5 lg:block">
-        <SidebarBody dueBills={dueBills} />
+        <SidebarBody badges={badges} />
       </aside>
 
       {/* Mobile top bar */}
@@ -242,7 +262,7 @@ export default function DashboardShell({ children }) {
           drawerOpen ? "is-open" : ""
         }`}
       >
-        <SidebarBody dueBills={dueBills} onNavigate={() => setDrawerOpen(false)} />
+        <SidebarBody badges={badges} onNavigate={() => setDrawerOpen(false)} />
       </div>
 
       <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">

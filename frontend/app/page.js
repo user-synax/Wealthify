@@ -1,8 +1,26 @@
 "use client";
 
 import Image from "next/image";
-import { List, X } from "@phosphor-icons/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { AnimatePresence, m, useReducedMotion } from "motion/react";
+import {
+  ArrowRight,
+  Bank,
+  CaretDown,
+  ChartLineUp,
+  GraduationCap,
+  List,
+  LockKey,
+  Receipt,
+  SpeakerHigh,
+  Storefront,
+  Timer,
+  Wallet,
+  WarningCircle,
+  X,
+} from "@phosphor-icons/react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useAuth } from "../components/auth-provider";
 
 const NAV_LINKS = [
@@ -68,6 +86,245 @@ const STAT_ROWS = [
 ];
 
 const inr = new Intl.NumberFormat("en-IN");
+
+/* Resolved once at module scope rather than during render: reading the clock in
+   a component body is impure, and the footer year does not need to be
+   re-derived on every keystroke of state. */
+const CURRENT_YEAR = new Date().getFullYear();
+
+/* --- Page content ---------------------------------------------------------
+   Everything here is a description of something the app actually does. No
+   feature is listed that does not exist in the codebase, and the one that
+   doesn't yet — the market — says so. */
+
+const FEATURES = [
+  {
+    icon: Wallet,
+    tint: "bg-tint-sky",
+    title: "One wallet, one score",
+    body: "Cash, savings and net worth in a single view, with instant transfers between them. Net worth only ever moves because a ledger entry moved it.",
+  },
+  {
+    icon: Bank,
+    tint: "bg-tint-mint",
+    title: "Income that isn't a button",
+    body: "Start as an Intern and work the career ladder to Executive. Salary credits itself when the simulated month turns over — there is no claim button to forget.",
+  },
+  {
+    icon: GraduationCap,
+    tint: "bg-tint-lavender",
+    title: "Skills change the work",
+    body: "Six skills, five levels each, bought with money and paid for in waiting. Every level raises the fee and shortens the job — and levels held anywhere make everything else faster.",
+  },
+  {
+    icon: Timer,
+    tint: "bg-tint-peach",
+    title: "Freelance work, then transfer",
+    body: "Take a job, let the timer run, and the fee lands in escrow. It reaches your wallet only when you transfer it — which is the whole point of taking it.",
+  },
+  {
+    icon: Storefront,
+    tint: "bg-tint-yellow",
+    title: "A store with consequences",
+    body: "Buy the gear that raises what your work pays. Then keep paying for it: some purchases add a monthly bill you will meet again.",
+  },
+  {
+    icon: Receipt,
+    tint: "bg-tint-rose",
+    title: "Receipts you can reopen",
+    body: "Every movement is immutable, with its own reference, method and the balance it produced. Nothing is edited after the fact — corrections are new entries.",
+  },
+];
+
+/* The payment flow, step for step. Rendered as a real timeline rather than a
+   screenshot, because the sequence is the feature. */
+const UPI_STEPS = [
+  "Opening your UPI app",
+  "Verifying the merchant",
+  "Raising the collect request",
+  "Approving with your UPI PIN",
+  "Request sent to your bank",
+  "Waiting for your approval",
+  "Authorising the debit",
+  "Debiting your account",
+  "Confirming with the merchant",
+  "Generating the payment reference",
+];
+
+const PAYMENT_NOTES = [
+  {
+    icon: LockKey,
+    title: "A PIN, not a checkbox",
+    body: "Four digits, hashed at rest, required for every payment. Five wrong tries locks payments for ten minutes.",
+  },
+  {
+    icon: SpeakerHigh,
+    title: "Sound and haptics",
+    body: "Synthesised on your device, not downloaded — a click for each key, a chime when money lands. Both toggleable.",
+  },
+  {
+    icon: WarningCircle,
+    title: "It can say no",
+    body: "Payments get declined. Insufficient funds shows exactly what you had, what was needed and how far short you were.",
+  },
+];
+
+const STEPS = [
+  {
+    title: "Create an account",
+    body: "You start with ₹25,000 of virtual money. No card, no deposit, no bank details — nothing here touches real accounts.",
+  },
+  {
+    title: "Earn it",
+    body: "Take a salary on the career ladder, learn skills to unlock better-paid work, and claim small daily tasks to keep a streak alive.",
+  },
+  {
+    title: "Spend and save it",
+    body: "Groceries, rent, a laptop, a car. Some purchases raise what your work pays, and some of them come with a bill you keep meeting.",
+  },
+  {
+    title: "Watch the number",
+    body: "Net worth is cash plus savings plus investments. Decisions you make in week one are visible in it a month later.",
+  },
+];
+
+const MARKET_PREVIEW = [
+  {
+    icon: ChartLineUp,
+    title: "Simulated stocks",
+    body: "Prices that move on their own, with no guaranteed returns.",
+  },
+  {
+    icon: Wallet,
+    title: "A real portfolio",
+    body: "Positions, average buy price, and profit or loss that updates.",
+  },
+  {
+    icon: WarningCircle,
+    title: "Sector events",
+    body: "Occasional shocks that move a whole category at once.",
+  },
+];
+
+const FAQ = [
+  {
+    q: "Is any of this real money?",
+    a: "No. Wealthify is a simulator. There are no deposits, no withdrawals, no payment gateway and no bank connection anywhere in it. Every rupee is fictional and every balance lives in our database.",
+  },
+  {
+    q: "Do I need to enter card or bank details?",
+    a: "Never. The UPI, card and balance options at checkout are simulated end to end — they settle against your virtual balance. The only secret the app holds is your 4-digit payment PIN, which is hashed and never shown back to you.",
+  },
+  {
+    q: "How fast does time move?",
+    a: "One real day is one simulated month. Salary, bills and interest all run on that clock, so a payday-to-payday cycle takes about a day of real time to pass.",
+  },
+  {
+    q: "Why do I have to wait for freelance work?",
+    a: "Because a job you tap and instantly get paid for is a slot machine. Real work takes time and then it takes a claim: the fee sits in escrow until you transfer it into your wallet.",
+  },
+  {
+    q: "What happens if I run out of money?",
+    a: "Bills still come due. Unpaid bills accrue a late fee, and autopay will collect them the moment a new month credits your salary. You can always work more, learn a skill or sell something.",
+  },
+  {
+    q: "Can I lose my progress?",
+    a: "Your balance, skills, jobs and history all live server-side, so closing the tab costs you nothing. Signing out and back in picks up exactly where you left off.",
+  },
+];
+
+/* --- Local presentation helpers ------------------------------------------ */
+
+/* Scroll reveal.
+
+   `initial={false}` is the important part. A hidden initial state would be
+   server-rendered, so the page's own content would ship to the browser
+   invisible and stay that way until JavaScript ran — bad for a slow phone, and
+   bad for anything reading the page without running scripts. Leaving `initial`
+   alone means the markup is visible by default and the reveal is a pure
+   enhancement applied when the element scrolls into view. */
+function Reveal({ children, className, delay = 0 }) {
+  const reduceMotion = useReducedMotion();
+  if (reduceMotion) return <div className={className}>{children}</div>;
+
+  return (
+    <m.div
+      className={className}
+      initial={false}
+      whileInView={{ opacity: [0, 1], y: [16, 0] }}
+      viewport={{ once: true, margin: "-80px" }}
+      transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1], delay }}
+    >
+      {children}
+    </m.div>
+  );
+}
+
+function SectionHeading({ eyebrow, title, body }) {
+  return (
+    <Reveal className="mx-auto max-w-2xl text-center">
+      <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-stone">
+        {eyebrow}
+      </p>
+      <h2 className="mt-3 text-balance text-[32px] font-semibold leading-[1.15] tracking-[-0.02em] text-ink sm:text-[40px]">
+        {title}
+      </h2>
+      {body && (
+        <p className="mx-auto mt-4 max-w-[56ch] text-[16px] leading-[1.6] text-steel">
+          {body}
+        </p>
+      )}
+    </Reveal>
+  );
+}
+
+/* motions.dev does the height here rather than CSS: an accordion panel's
+   height is a value that has to be measured and animated, and `height: auto`
+   is the one thing a CSS transition cannot interpolate. */
+function FaqItem({ item, open, onToggle }) {
+  const id = useId();
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <div className="border-b border-hairline last:border-b-0">
+      <h3>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={`${id}-panel`}
+          onClick={onToggle}
+          className="focus-ring flex w-full items-center justify-between gap-4 rounded-lg py-4 text-left"
+        >
+          <span className="text-[16px] font-medium text-charcoal">{item.q}</span>
+          <CaretDown
+            size={18}
+            weight="bold"
+            aria-hidden="true"
+            className={`shrink-0 text-steel transition-transform duration-200 ${
+              open ? "rotate-180" : ""
+            }`}
+          />
+        </button>
+      </h3>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <m.div
+            key="panel"
+            id={`${id}-panel`}
+            initial={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            animate={reduceMotion ? { opacity: 1 } : { height: "auto", opacity: 1 }}
+            exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <p className="pb-5 pr-8 text-[15px] leading-[1.65] text-steel">{item.a}</p>
+          </m.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export default function Home() {
   const [entered, setEntered] = useState(false);
@@ -139,6 +396,19 @@ export default function Home() {
   }, []);
 
   const { status, logout } = useAuth();
+  const router = useRouter();
+
+  /* One accordion open at a time, and one already open on arrival so the
+     section never reads as a wall of closed bars. */
+  const [openFaq, setOpenFaq] = useState(0);
+
+  /* The middleware already redirects a signed-in visitor before any HTML is
+     sent. This is the client half of the same rule, and it exists because the
+     cookie is only a routing hint: if it was present at the edge but the API
+     rejects it, AuthProvider says so and this correctly does nothing. */
+  useEffect(() => {
+    if (status === "authenticated") router.replace("/dashboard");
+  }, [status, router]);
 
   const onLogout = useCallback(async () => {
     await logout();
@@ -552,19 +822,362 @@ export default function Home() {
           </div>
         </section>
 
-        {/* The remaining landing sections land here next. */}
+        {/* ---------------- Features ---------------- */}
         <section id="features" className="bg-canvas px-6 pb-24 pt-24 sm:pt-32">
           <div className="mx-auto max-w-6xl">
-            <p className="text-sm text-steel">
-              Placeholder: the remaining landing sections land here next.
-            </p>
-            <div
-              aria-hidden="true"
-              className="mt-8 h-[70dvh] rounded-2xl bg-surface-soft"
+            <SectionHeading
+              eyebrow="Features"
+              title="A whole financial life, with none of the risk"
+              body="Every system in the simulator, built around one rule: the client never decides what anything costs, and no balance ever changes without a ledger entry behind it."
             />
+
+            <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {FEATURES.map((feature, index) => {
+                const Icon = feature.icon;
+                return (
+                  <Reveal key={feature.title} delay={(index % 3) * 0.06}>
+                    <article className="flex h-full flex-col rounded-2xl border border-hairline bg-canvas p-6">
+                      <span
+                        className={`grid h-11 w-11 place-items-center rounded-xl ${feature.tint} text-ink`}
+                      >
+                        <Icon size={22} weight="duotone" />
+                      </span>
+                      <h3 className="mt-5 text-[19px] font-semibold tracking-[-0.01em] text-ink">
+                        {feature.title}
+                      </h3>
+                      <p className="mt-2.5 text-[15px] leading-[1.6] text-steel">
+                        {feature.body}
+                      </p>
+                    </article>
+                  </Reveal>
+                );
+              })}
+            </div>
           </div>
         </section>
+
+        {/* ---------------- Payment experience ----------------
+            The product's actual claim to being different, so it gets its own
+            band and the real sequence rather than a screenshot of one. */}
+        <section className="relative overflow-hidden bg-navy px-6 py-24 text-on-dark sm:py-32">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute left-[6%] top-[14%] h-3 w-3 rounded-full bg-[var(--brand-teal)]"
+          />
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute right-[7%] bottom-[16%] h-2.5 w-2.5 rounded-full bg-[var(--brand-pink)]"
+          />
+
+          <div className="relative mx-auto max-w-6xl">
+            <Reveal className="mx-auto max-w-2xl text-center">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-on-dark-muted">
+                Payments
+              </p>
+              <h2 className="mt-3 text-balance text-[32px] font-semibold leading-[1.15] tracking-[-0.02em] sm:text-[40px]">
+                Payments that behave like payments
+              </h2>
+              <p className="mx-auto mt-4 max-w-[56ch] text-[16px] leading-[1.6] text-on-dark-muted">
+                A real payment has a shape: a network, a bank, a reference, and a
+                moment where it could still fail. UPI here runs the whole ten
+                beats, with your PIN in the middle where it belongs.
+              </p>
+            </Reveal>
+
+            <div className="mt-14 grid gap-4 lg:grid-cols-5">
+              {/* The sequence */}
+              <Reveal className="lg:col-span-3">
+                <div className="h-full rounded-2xl border border-white/12 bg-white/[0.04] p-6 sm:p-7">
+                  <div className="flex items-baseline justify-between gap-4">
+                    <p className="text-[15px] font-semibold">Pay with UPI</p>
+                    <span className="t-num text-[12px] text-on-dark-muted">
+                      10 steps
+                    </span>
+                  </div>
+
+                  <ol className="mt-5 grid gap-0">
+                    {UPI_STEPS.map((step, index) => (
+                      <li key={step} className="flex items-start gap-3.5">
+                        <span className="flex flex-col items-center self-stretch">
+                          <span
+                            className={`t-num grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-semibold ${
+                              index === 3
+                                ? "bg-[var(--brand-yellow)] text-ink"
+                                : "bg-white/10 text-on-dark-muted"
+                            }`}
+                          >
+                            {index + 1}
+                          </span>
+                          {index < UPI_STEPS.length - 1 && (
+                            <span
+                              aria-hidden="true"
+                              className="my-1 w-px flex-1 bg-white/12"
+                            />
+                          )}
+                        </span>
+                        <span
+                          className={`pb-4 text-[14px] leading-[1.4] ${
+                            index === 3 ? "font-medium text-on-dark" : "text-on-dark-muted"
+                          }`}
+                        >
+                          {step}
+                          {index === 3 && (
+                            <span className="mt-0.5 block text-[12px] text-[var(--brand-yellow)]">
+                              Your 4-digit PIN, asked for mid-flight
+                            </span>
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </Reveal>
+
+              {/* What makes it feel real */}
+              <div className="grid gap-4 lg:col-span-2">
+                {PAYMENT_NOTES.map((note, index) => {
+                  const Icon = note.icon;
+                  return (
+                    <Reveal key={note.title} delay={index * 0.06} className="h-full">
+                      <div className="flex h-full gap-4 rounded-2xl border border-white/12 bg-white/[0.04] p-5">
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/10">
+                          <Icon size={20} weight="duotone" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-[15px] font-semibold">{note.title}</p>
+                          <p className="mt-1.5 text-[14px] leading-[1.55] text-on-dark-muted">
+                            {note.body}
+                          </p>
+                        </div>
+                      </div>
+                    </Reveal>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ---------------- How it works ---------------- */}
+        <section id="how-it-works" className="bg-surface px-6 py-24 sm:py-32">
+          <div className="mx-auto max-w-6xl">
+            <SectionHeading
+              eyebrow="How it works"
+              title="From empty wallet to net worth"
+              body="Four steps, and the same loop over and over until the number looks like something you built."
+            />
+
+            <ol className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {STEPS.map((step, index) => (
+                <Reveal key={step.title} delay={index * 0.06} className="h-full">
+                  <li className="flex h-full flex-col rounded-2xl border border-hairline bg-canvas p-6">
+                    <span className="t-num text-[13px] font-semibold text-stone">
+                      Step {index + 1}
+                    </span>
+                    <h3 className="mt-3 text-[19px] font-semibold tracking-[-0.01em] text-ink">
+                      {step.title}
+                    </h3>
+                    <p className="mt-2.5 text-[15px] leading-[1.6] text-steel">
+                      {step.body}
+                    </p>
+                  </li>
+                </Reveal>
+              ))}
+            </ol>
+
+            {/* The clock is the single most confusing thing about the app, so it
+                is stated plainly rather than left to be discovered. */}
+            <Reveal className="mt-4">
+              <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-2xl border border-hairline bg-tint-cream px-6 py-5">
+                <div className="min-w-0">
+                  <p className="text-[15px] font-semibold text-ink">
+                    One real day is one simulated month
+                  </p>
+                  <p className="mt-1 text-[14px] leading-[1.55] text-[#523410]">
+                    Salary, bills and interest all run on that clock. A payday-to-payday
+                    month passes in about a day of real time — fast enough to watch a
+                    decision come back around.
+                  </p>
+                </div>
+                <span className="t-num rounded-full border border-hairline-strong bg-canvas px-3.5 py-1.5 text-[13px] font-medium text-charcoal">
+                  1 day → 1 month
+                </span>
+              </div>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ---------------- Markets ---------------- */}
+        <section id="markets" className="bg-canvas px-6 py-24 sm:py-32">
+          <div className="mx-auto max-w-6xl">
+            <SectionHeading
+              eyebrow="Markets"
+              title="The market isn't open yet"
+              body="Investing is the next sprint, not a promise we can demo today. Here is exactly what is being built."
+            />
+
+            <Reveal className="mx-auto mt-6 flex justify-center">
+              <span className="inline-flex items-center gap-2 rounded-full border border-hairline bg-surface-soft px-3.5 py-1.5 text-[13px] font-medium text-steel">
+                <span
+                  aria-hidden="true"
+                  className="h-1.5 w-1.5 rounded-full bg-[var(--brand-orange)]"
+                />
+                In development
+              </span>
+            </Reveal>
+
+            <div className="mt-12 grid gap-4 sm:grid-cols-3">
+              {MARKET_PREVIEW.map((item, index) => {
+                const Icon = item.icon;
+                return (
+                  <Reveal key={item.title} delay={index * 0.06} className="h-full">
+                    <div className="flex h-full flex-col rounded-2xl border border-dashed border-hairline-strong bg-surface-soft p-6">
+                      <span className="grid h-11 w-11 place-items-center rounded-xl bg-canvas text-stone">
+                        <Icon size={22} weight="duotone" />
+                      </span>
+                      <h3 className="mt-5 text-[17px] font-semibold text-slate">
+                        {item.title}
+                      </h3>
+                      <p className="mt-2 text-[14px] leading-[1.6] text-steel">
+                        {item.body}
+                      </p>
+                    </div>
+                  </Reveal>
+                );
+              })}
+            </div>
+
+            <Reveal className="mt-6">
+              <p className="text-center text-[14px] leading-[1.6] text-stone">
+                Until it ships, savings is the only place money grows — and the
+                store, the career ladder and the freelance board are where it comes from.
+              </p>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ---------------- FAQ ---------------- */}
+        <section id="faq" className="bg-surface px-6 py-24 sm:py-32">
+          <div className="mx-auto max-w-3xl">
+            <SectionHeading
+              eyebrow="FAQ"
+              title="The questions everyone asks"
+              body="Mostly variations on one: is any of this real?"
+            />
+
+            <Reveal className="mt-12">
+              <div className="rounded-2xl border border-hairline bg-canvas px-6 sm:px-7">
+                {FAQ.map((item, index) => (
+                  <FaqItem
+                    key={item.q}
+                    item={item}
+                    open={openFaq === index}
+                    onToggle={() => setOpenFaq(openFaq === index ? -1 : index)}
+                  />
+                ))}
+              </div>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ---------------- Closing CTA ---------------- */}
+        <section className="bg-navy px-6 py-24 text-center text-on-dark sm:py-28">
+          <Reveal className="mx-auto max-w-2xl">
+            <h2 className="text-balance text-[32px] font-semibold leading-[1.15] tracking-[-0.02em] sm:text-[42px]">
+              Start with ₹25,000 that isn&apos;t real
+            </h2>
+            <p className="mx-auto mt-5 max-w-[52ch] text-[16px] leading-[1.6] text-on-dark-muted">
+              No card, no deposit, no bank details. Just an account, a salary to
+              earn and a number to grow.
+            </p>
+            <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/signup"
+                className="btn-on-dark focus-ring inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-medium"
+              >
+                Create your free account
+                <ArrowRight size={15} weight="bold" />
+              </Link>
+              <Link
+                href="/login"
+                className="btn-outline-dark focus-ring inline-flex rounded-lg px-5 py-3 text-sm font-medium"
+              >
+                I already have one
+              </Link>
+            </div>
+          </Reveal>
+        </section>
       </main>
+
+      {/* ---------------- Footer ---------------- */}
+      <footer className="border-t border-hairline bg-canvas px-6 py-14">
+        <div className="mx-auto max-w-6xl">
+          <div className="flex flex-wrap items-start justify-between gap-x-10 gap-y-10">
+            <div className="max-w-xs">
+              <span className="flex items-center gap-2.5">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-navy">
+                  <Image
+                    src="/wealthify-mark.png"
+                    alt=""
+                    width={114}
+                    height={144}
+                    className="h-[22px] w-auto"
+                  />
+                </span>
+                <span className="text-[17px] font-semibold tracking-[-0.02em] text-charcoal">
+                  Wealthify
+                </span>
+              </span>
+              <p className="mt-4 text-[14px] leading-[1.6] text-steel">
+                A financial life simulator. Earn it, spend it, save it — with money
+                that only exists here.
+              </p>
+            </div>
+
+            <nav aria-label="Product" className="grid gap-3">
+              <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-stone">
+                Product
+              </p>
+              {NAV_LINKS.map((link) => (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  className="focus-ring w-fit rounded text-[14px] text-steel hover:text-charcoal"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </nav>
+
+            <nav aria-label="Account" className="grid gap-3">
+              <p className="text-[12px] font-semibold uppercase tracking-[0.12em] text-stone">
+                Account
+              </p>
+              <Link
+                href="/login"
+                className="focus-ring w-fit rounded text-[14px] text-steel hover:text-charcoal"
+              >
+                Log in
+              </Link>
+              <Link
+                href="/signup"
+                className="focus-ring w-fit rounded text-[14px] text-steel hover:text-charcoal"
+              >
+                Create an account
+              </Link>
+            </nav>
+          </div>
+
+          <div className="mt-12 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-hairline pt-6">
+            <p className="text-[13px] text-stone">
+              100% virtual money. No deposits, no bank connections, no real risk.
+            </p>
+            <p className="text-[13px] text-stone">
+              © {CURRENT_YEAR} Wealthify
+            </p>
+          </div>
+        </div>
+      </footer>
     </>
   );
 }

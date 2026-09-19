@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, m, useReducedMotion } from "motion/react";
 import {
   ArrowUpRight,
+  BellRinging,
+  BellSlash,
   CheckCircle,
   Clock,
   Fire,
@@ -17,10 +20,13 @@ import {
 import DashboardShell from "../../components/dashboard-shell";
 import ReceiptModal from "../../components/receipt-modal";
 import CheckoutSheet from "../../components/checkout-sheet";
+import AnimatedNumber from "../../components/animated-number";
+import Toggle from "../../components/toggle";
 import { CatalogIcon } from "../../components/icon-map";
 import { useAuth } from "../../components/auth-provider";
 import { useToast } from "../../components/toast-provider";
 import { usePaymentFeedback } from "../../components/payment-feedback-provider";
+import { useWorkNotifier } from "../../components/work-notifier-provider";
 import { useNotices } from "../../lib/use-notices";
 import {
   collectCourse,
@@ -103,6 +109,8 @@ export default function IncomePage() {
   const { status, user, wallet, applyWallet, applyUser, refresh } = useAuth();
   const toast = useToast();
   const feedback = usePaymentFeedback();
+  const notifier = useWorkNotifier();
+  const reduceMotion = useReducedMotion();
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -385,6 +393,36 @@ export default function IncomePage() {
     }
   }
 
+  /* Asking for notification permission has to happen inside a real click, so
+     it is wired to the toggle rather than fired from an effect on load. */
+  async function onToggleNotifications(next) {
+    const result = await notifier.setNotificationsEnabled(next);
+    if (result === "denied") {
+      toast.push({
+        tone: "warning",
+        title: "Notifications blocked",
+        body: "Your browser is blocking them for this site. Allow them in site settings to turn this on.",
+      });
+      return;
+    }
+    if (result === "unsupported") {
+      toast.push({
+        tone: "info",
+        title: "Not available here",
+        body: "This browser does not support notifications. Work still finishes — it just stays quiet.",
+      });
+      return;
+    }
+    if (next) {
+      feedback.play("key");
+      toast.push({
+        tone: "info",
+        title: "Notifications on",
+        body: "You will hear about finished work even on another tab.",
+      });
+    }
+  }
+
   async function runTask(task) {
     setBusy(`task:${task.id}`);
     try {
@@ -437,23 +475,55 @@ export default function IncomePage() {
               <p className="text-[12px] font-medium text-[var(--brand-orange-deep)]">
                 Awaiting transfer
               </p>
-              <p className="t-num mt-0.5 text-[20px] font-semibold text-ink">
-                {formatPaise(pendingTotal)}
-              </p>
+              {/* A spring, not a re-render: the figure counts to its new value
+                  instead of swapping digits, which is what makes a transfer
+                  read as money arriving rather than as a refresh. */}
+              <AnimatedNumber
+                value={pendingTotal}
+                className="t-num mt-0.5 block text-[20px] font-semibold text-ink"
+              />
             </div>
           )}
           <div className="rounded-xl border border-hairline bg-canvas px-4 py-3">
             <p className="text-[12px] font-medium text-steel">In your wallet</p>
-            <p className="t-num mt-0.5 text-[20px] font-semibold text-ink">
-              {formatPaise(wallet?.cashBalance ?? 0)}
-            </p>
+            <AnimatedNumber
+              value={wallet?.cashBalance ?? 0}
+              className="t-num mt-0.5 block text-[20px] font-semibold text-ink"
+            />
           </div>
         </div>
       </div>
 
-      {/* Awaiting transfer — the money that exists but is not yours yet */}
+      {/* First load. Three slabs rather than a blank column that fills in
+          section by section as the requests land. */}
+      {loading && !data && (
+        <div className="mt-5 grid gap-4">
+          <div className="t-skel h-24 rounded-xl" />
+          <div className="t-skel h-44 rounded-xl" />
+          <div className="t-skel h-64 rounded-xl" />
+        </div>
+      )}
+
+      {data && (
+        <>
+      {/* Awaiting transfer — the money that exists but is not yours yet.
+
+          The one place on this page that gets a real enter/exit animation: a
+          job finishing is the moment the whole loop exists for, and a section
+          that rises in on its own is how the app says so. `initial={false}`
+          because arriving on a page that already had pending work should not
+          replay the entrance. */}
+      <AnimatePresence initial={false}>
       {readyGigs.length > 0 && (
-        <section className="mt-5 rounded-xl border border-[color-mix(in_srgb,var(--brand-orange)_38%,white)] bg-canvas p-5">
+        <m.section
+          key="escrow"
+          initial={reduceMotion ? false : { opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, height: 0 }}
+          transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+          className="overflow-hidden"
+        >
+        <div className="mt-5 rounded-xl border border-[color-mix(in_srgb,var(--brand-orange)_38%,white)] bg-canvas p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <h2 className="flex items-center gap-2 text-[18px] font-semibold text-ink">
@@ -467,7 +537,10 @@ export default function IncomePage() {
               </p>
             </div>
             <div className="text-right">
-              <p className="t-num text-[26px] font-semibold text-ink">{formatPaise(pendingTotal)}</p>
+              <AnimatedNumber
+                value={pendingTotal}
+                className="t-num block text-[26px] font-semibold text-ink"
+              />
               <button
                 type="button"
                 disabled={Boolean(busy)}
@@ -514,8 +587,10 @@ export default function IncomePage() {
               );
             })}
           </ul>
-        </section>
+        </div>
+        </m.section>
       )}
+      </AnimatePresence>
 
       {/* In progress */}
       {(runningGigs.length > 0 || courses.length > 0) && (
@@ -858,6 +933,26 @@ export default function IncomePage() {
             slot open, so transferring it frees you up immediately.
           </p>
         )}
+
+        {/* Opt-in, never a prompt on load: browsers require a real gesture to
+            grant permission, and an app that demands notifications before you
+            have done anything has earned the block it gets. */}
+        <div className="mt-4 border-t border-hairline pt-4">
+          <Toggle
+            id="pref-work-notifications"
+            label="Tell me when work finishes"
+            description={
+              notifier.notifications.permission === "denied"
+                ? "Blocked for this site in your browser. Allow notifications there to switch this on."
+                : notifier.notifications.permission === "unsupported"
+                  ? "This browser does not support notifications. Work still finishes, it just stays quiet."
+                  : "One notification when a job is done and its fee is waiting, and a badge on Income until you transfer it."
+            }
+            checked={notifier.notifications.enabled}
+            disabled={notifier.notifications.permission === "unsupported"}
+            onChange={onToggleNotifications}
+          />
+        </div>
       </section>
 
       {/* Career + salary + streak */}
@@ -1010,6 +1105,9 @@ export default function IncomePage() {
           </p>
         )}
       </section>
+
+        </>
+      )}
 
       <CheckoutSheet
         key={intent?.key ?? "closed"}

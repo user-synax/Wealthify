@@ -8,6 +8,17 @@ function required(name, fallback) {
   return value;
 }
 
+/* Number of reverse-proxy hops in front of the app, or 0 when it is served
+   directly. This is not cosmetic: express-rate-limit keys on `req.ip`, and with
+   `trust proxy` unset behind a load balancer every request arrives with the
+   balancer's address — so one shared bucket would rate-limit every user at
+   once, while a too-high value lets a client spoof `X-Forwarded-For` and mint
+   itself a fresh bucket per request. Set it to the real number of hops. */
+const trustProxy = (() => {
+  const raw = Number(process.env.TRUST_PROXY);
+  return Number.isInteger(raw) && raw > 0 && raw <= 10 ? raw : 0;
+})();
+
 export const config = {
   port: Number(process.env.PORT ?? 4000),
   mongoUri: required("MONGODB_URI", "mongodb://127.0.0.1:27017/wealthify"),
@@ -15,6 +26,7 @@ export const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
   frontendUrl: process.env.FRONTEND_URL ?? "http://localhost:3000",
   isProd: process.env.NODE_ENV === "production",
+  trustProxy,
 };
 
 // Money is stored as integer paise everywhere (PRD anti-cheat).

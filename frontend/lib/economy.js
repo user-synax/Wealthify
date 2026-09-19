@@ -47,6 +47,12 @@ export const fetchReceipt = (id, signal) =>
 /* --- Income -------------------------------------------------------------- */
 export const fetchIncome = (signal) => apiRequest("/api/income", { signal });
 
+/* The notifier's read, used on every signed-in page. It is a fraction of the
+   income payload on purpose: a background tab checking whether a timer has
+   finished should not be rebuilding the gig board every minute. */
+export const fetchEngagementStatus = (signal) =>
+  apiRequest("/api/income/engagements/status", { signal });
+
 /* Starting a job moves no money, so it needs no key: the server's unique index
    on live runs is what makes a double tap safe, and it answers the second tap
    with the run the first one opened. */

@@ -5,14 +5,42 @@ import {
   config,
 } from "../config.js";
 
+/* ----------------------------------------------------------------------------
+   Session tokens.
+
+   Two verifications are pinned rather than defaulted, because both defaults are
+   footguns:
+
+     - `algorithms: ["HS256"]` — without it, `jwt.verify` will happily accept
+       whatever the token's own header asks for, which is the shape of the
+       classic "alg: none" and RS256→HS256 confusion attacks. The secret is
+       symmetric, so exactly one algorithm is ever legitimate.
+     - `issuer` — a token signed with the same secret for a *different* service
+       must not be accepted here. Cheap to add, and it is the difference between
+       "our secret" and "our session".
+
+   Expiry comes from config (7 days by default). The cookie is httpOnly so no
+   script can read it, SameSite=Lax so a cross-site POST cannot carry it (which
+   is what makes the API CSRF-resistant without a token dance), and Secure in
+   production so it never crosses plaintext.
+   -------------------------------------------------------------------------- */
+
+const ISSUER = "wealthify";
+const ALGORITHM = "HS256";
+
 export function signToken(userId) {
   return jwt.sign({ sub: String(userId) }, config.jwtSecret, {
     expiresIn: config.jwtExpiresIn,
+    algorithm: ALGORITHM,
+    issuer: ISSUER,
   });
 }
 
 export function verifyToken(token) {
-  return jwt.verify(token, config.jwtSecret);
+  return jwt.verify(token, config.jwtSecret, {
+    algorithms: [ALGORITHM],
+    issuer: ISSUER,
+  });
 }
 
 function baseCookieOptions() {

@@ -4,6 +4,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { badRequest, notFound, tooMany } from "../utils/http-error.js";
 import { Engagement } from "../models/Engagement.js";
 import {
+  ENGAGEMENT_SLOTS,
   GIGS_BY_ID,
   GIGS_PER_CYCLE_CAP,
   TASKS,
@@ -154,6 +155,56 @@ incomeRouter.get("/", async (req, res, next) => {
         done: tasksToday >= TASKS_PER_DAY_CAP,
       })),
       taskCap: { used: tasksToday, max: TASKS_PER_DAY_CAP },
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/* GET /api/income/engagements/status
+
+   A deliberately tiny read for the work notifier, which runs on every signed-in
+   page rather than only on this one. It answers the two questions that notifier
+   has — is anything still running, and when is the next thing due — without
+   building the whole income payload, because a background tab polling for
+   twenty minutes should not be assembling the gig board each time. */
+incomeRouter.get("/engagements/status", async (req, res, next) => {
+  try {
+    const now = Date.now();
+    const rows = await Engagement.find({ userId: req.user._id, settled: false })
+      .select("kind reward finishesAt title icon level")
+      .lean();
+
+    let running = 0;
+    let soonestFinishAt = null;
+    let pendingAmount = 0;
+    const readyItems = [];
+
+    for (const row of rows) {
+      const finish = new Date(row.finishesAt).getTime();
+      if (finish > now) {
+        running += 1;
+        soonestFinishAt = soonestFinishAt === null ? finish : Math.min(soonestFinishAt, finish);
+        continue;
+      }
+      if (row.kind === "gig") pendingAmount += row.reward;
+      readyItems.push({
+        id: String(row._id),
+        kind: row.kind,
+        title: row.title,
+        icon: row.icon,
+        level: row.level,
+        reward: row.reward,
+      });
+    }
+
+    return res.json({
+      running,
+      ready: readyItems.length,
+      pendingAmount,
+      readyItems,
+      soonestFinishAt: soonestFinishAt === null ? null : new Date(soonestFinishAt).toISOString(),
+      slots: { used: running, max: ENGAGEMENT_SLOTS },
     });
   } catch (err) {
     return next(err);

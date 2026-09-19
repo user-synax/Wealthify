@@ -30,6 +30,14 @@ authRouter.use(authLimiter);
 const USERNAME_RE = /^[a-zA-Z0-9_]+$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/* A real bcrypt hash to compare against when no account matched, so the
+   failure path costs the same as the success path. See the login handler. */
+let dummyHashPromise = null;
+const dummyHash = () => {
+  if (!dummyHashPromise) dummyHashPromise = bcrypt.hash("wealthify-timing-equaliser", 12);
+  return dummyHashPromise;
+};
+
 function fieldError(res, fields) {
   return res.status(400).json({ error: { code: "VALIDATION_ERROR", fields } });
 }
@@ -201,8 +209,18 @@ authRouter.post("/login", async (req, res, next) => {
       $or: [{ email: lookup }, { username: identifier }],
     }).select("+passwordHash");
 
-    // Generic message either way so accounts cannot be enumerated.
+    /* Generic message either way so accounts cannot be enumerated — and a
+       generic *cost* too. Returning early on an unknown identifier skips
+       bcrypt entirely, which at cost 12 is ~80ms against ~5ms: a trivially
+       measurable oracle that tells an attacker which usernames exist. The
+       dummy comparison makes both paths pay the same price.
+
+       The throwaway hash is built once, lazily, because hashing it at module
+       load would block startup for a quarter of a second. The very first miss
+       therefore pays for the hash instead of the compare; every one after it
+       is constant. */
     if (!user) {
+      await bcrypt.compare(password, await dummyHash());
       return res.status(401).json({ error: { code: "INVALID_CREDENTIALS" } });
     }
     const ok = await bcrypt.compare(password, user.passwordHash);

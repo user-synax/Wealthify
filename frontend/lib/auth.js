@@ -16,6 +16,9 @@ export const logout = () => apiRequest("/api/auth/logout", { method: "POST" });
 
 export const fetchMe = () => apiRequest("/api/auth/me");
 
+export const updateProfile = (payload) =>
+  apiRequest("/api/auth/profile", { method: "PATCH", body: payload });
+
 // Where to send the user after login/signup. Honours the `?next=` hint set
 // by the route guard, but only for same-origin app paths.
 export function safeNextTarget(fallback = "/dashboard") {

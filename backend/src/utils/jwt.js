@@ -79,6 +79,7 @@ export function publicUser(user) {
     username: user.username,
     email: user.email,
     avatar: user.avatar ?? "",
+    bio: user.bio ?? "",
     level: user.level,
     xp: user.xp,
     career: user.career,

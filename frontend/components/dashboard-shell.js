@@ -11,6 +11,7 @@ import {
   Receipt,
   SignOut,
   Storefront,
+  Trophy,
   TrendUp,
   User,
 } from "@phosphor-icons/react";
@@ -65,7 +66,10 @@ const TABS = [
   { href: "/activity", label: "Activity", icon: List },
 ];
 
-const ACCOUNT_LINKS = [{ href: "/profile", label: "Profile", icon: User }];
+const ACCOUNT_LINKS = [
+  { href: "/profile", label: "Profile", icon: User },
+  { href: "/leaderboard", label: "Leaderboard", icon: Trophy },
+];
 
 // Real destinations that do not exist yet. Rendered as inert rows with a
 // Soon badge so the menu never promises a page it cannot open.
@@ -80,6 +84,7 @@ const TITLES = {
   "/store": "Store",
   "/activity": "Activity",
   "/profile": "Profile",
+  "/leaderboard": "Leaderboard",
 };
 
 function isActive(pathname, href) {

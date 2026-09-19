@@ -33,6 +33,7 @@ const userSchema = new mongoose.Schema(
     },
     passwordHash: { type: String, required: true, select: false },
     avatar: { type: String, default: "" },
+    bio: { type: String, default: "", maxlength: 160, trim: true },
     level: { type: Number, default: 1, min: 1 },
     xp: { type: Number, default: 0, min: 0 },
     career: { type: String, default: "Intern" },

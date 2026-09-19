@@ -227,3 +227,47 @@ authRouter.get("/me", requireAuth, async (req, res, next) => {
     return next(err);
   }
 });
+
+// PATCH /api/auth/profile — changes only public profile presentation fields.
+authRouter.patch("/profile", requireAuth, async (req, res, next) => {
+  try {
+    const updates = {};
+    if (req.body?.bio !== undefined) {
+      if (typeof req.body.bio !== "string" || req.body.bio.trim().length > 160) {
+        return fieldError(res, { bio: "Bio must be 160 characters or fewer." });
+      }
+      updates.bio = req.body.bio.trim();
+    }
+    if (req.body?.avatar !== undefined) {
+      const allowedAvatars = ["", "🌱", "🚀", "💡", "🎯", "🪙", "📈", "🏆", "💎"];
+      const avatar = typeof req.body.avatar === "string" ? req.body.avatar.trim() : "";
+      let validUrl = false;
+      if (avatar && !allowedAvatars.includes(avatar)) {
+        try {
+          const parsed = new URL(avatar);
+          validUrl = parsed.protocol === "http:" || parsed.protocol === "https:";
+        } catch {
+          validUrl = false;
+        }
+      }
+      if (avatar && !allowedAvatars.includes(avatar) && !validUrl) {
+        return fieldError(res, { avatar: "Choose an emoji or enter a valid http(s) image URL." });
+      }
+      if (avatar.length > 500) {
+        return fieldError(res, { avatar: "Avatar URL must be 500 characters or fewer." });
+      }
+      updates.avatar = avatar;
+    }
+    if (Object.keys(updates).length === 0) {
+      return fieldError(res, { profile: "No profile changes were provided." });
+    }
+
+    const user = await User.findByIdAndUpdate(req.user._id, updates, {
+      new: true,
+      runValidators: true,
+    });
+    return res.json({ user: publicUser(user) });
+  } catch (err) {
+    return next(err);
+  }
+});

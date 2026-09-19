@@ -14,6 +14,7 @@ import { transactionsRouter } from "./routes/transactions.js";
 import { incomeRouter } from "./routes/income.js";
 import { expensesRouter } from "./routes/expenses.js";
 import { paymentsRouter } from "./routes/payments.js";
+import { socialRouter } from "./routes/social.js";
 
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
   // Fail fast: a short/default secret would make every session forgeable.
@@ -66,6 +67,7 @@ app.use("/api/transactions", transactionsRouter);
 app.use("/api/income", incomeRouter);
 app.use("/api/expenses", expensesRouter);
 app.use("/api/payments", paymentsRouter);
+app.use("/api/social", socialRouter);
 
 // 404 for unknown API routes.
 app.use("/api", (req, res) => {

@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Briefcase, Receipt, TrendUp } from "@phosphor-icons/react";
+import ThemeColor from "./theme-color";
 
 const PANEL_POINTS = [
   {
@@ -55,7 +56,12 @@ function BrandLockup({ dark }) {
 // on mobile, form on a soft surface so the page is not white-on-white.
 export default function AuthCard({ title, subtitle, children }) {
   return (
-    <main className="grid min-h-[100dvh] lg:grid-cols-[5fr_6fr]">
+    <main className="grid min-h-[100dvh] grid-cols-1 lg:grid-cols-[5fr_6fr]">
+      {/* This page opens on navy — the full-height brand panel on desktop, the
+          compact strip on mobile — so the status bar follows it rather than
+          staying in the app's white. */}
+      <ThemeColor color="#0a1530" />
+
       {/* Brand panel: desktop only */}
       <section className="relative hidden overflow-hidden bg-navy text-on-dark lg:flex lg:flex-col lg:justify-between lg:px-12 lg:py-12">
         <span
@@ -110,8 +116,9 @@ export default function AuthCard({ title, subtitle, children }) {
 
       {/* Form side */}
       <section className="flex flex-col bg-surface">
-        {/* Compact brand strip: mobile only */}
-        <div className="flex items-center justify-between bg-navy px-6 py-4 lg:hidden">
+        {/* Compact brand strip: mobile only. `safe-top-4` because this strip is
+            the first thing under the notch once the page paints under it. */}
+        <div className="safe-top-4 flex items-center justify-between bg-navy px-6 pb-4 lg:hidden">
           <BrandLockup dark />
           <Link
             href="/"

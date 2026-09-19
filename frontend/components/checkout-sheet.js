@@ -510,7 +510,7 @@ export default function CheckoutSheet({
           role="dialog"
           aria-modal="true"
           aria-label={header.title}
-          className={`${sheetClass} focus-ring flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border border-hairline bg-canvas shadow-[rgba(15,15,15,0.24)_0px_24px_64px_-12px] outline-none sm:max-h-[88dvh] sm:rounded-2xl`}
+          className={`${sheetClass} safe-sheet-bottom focus-ring flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl sm:max-w-md border border-hairline bg-canvas shadow-[rgba(15,15,15,0.24)_0px_24px_64px_-12px] outline-none sm:max-h-[88dvh] sm:rounded-2xl`}
         >
           {/* Header */}
           <div className="flex items-center gap-3 border-b border-hairline px-5 py-3.5">
@@ -541,7 +541,7 @@ export default function CheckoutSheet({
             </button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5">
             {/* ---------------- Review ---------------- */}
             {step === "review" && (
               <div>

@@ -255,7 +255,7 @@ export default function DashboardPage() {
       </section>
 
       {/* Activity + roadmap */}
-      <div className="mt-4 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1.4fr_1fr]">
         <section className="rounded-xl border border-hairline bg-canvas p-5">
           <div className="flex items-baseline justify-between gap-3">
             <h2 className="text-[18px] font-semibold text-ink">Latest activity</h2>

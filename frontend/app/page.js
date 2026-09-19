@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, m, useReducedMotion } from "motion/react";
+import ThemeColor from "../components/theme-color";
 import {
   ArrowRight,
   Bank,
@@ -498,6 +499,10 @@ export default function Home() {
 
   return (
     <>
+      {/* The hero is navy edge to edge, so the status bar is too while this page
+          is the one on screen. */}
+      <ThemeColor color="#0a1530" />
+
       {/* Scroll sentinel. It sits at the very top of the document, so the pill
           can react to "has the page moved" without listening to scroll. */}
       <span
@@ -507,7 +512,11 @@ export default function Home() {
       />
 
       <header
-        className={`nav-float pointer-events-none fixed inset-x-0 top-0 z-50 px-4 pt-4 sm:px-6 sm:pt-5 ${
+        // `safe-top-4` rather than `pt-4 sm:pt-5`: the nav is fixed to the
+        // physical top of the screen, so in an installed app it has to clear the
+        // notch. On every device without one it resolves to exactly the spacing
+        // the utilities asked for.
+        className={`nav-float safe-top-4 pointer-events-none fixed inset-x-0 top-0 z-50 px-4 sm:px-6 ${
           scrolled ? "is-scrolled" : ""
         }`}
       >

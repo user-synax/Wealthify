@@ -59,12 +59,18 @@ export function ToastProvider({ children }) {
     <ToastContext.Provider value={value}>
       {children}
 
-      {/* Bottom-centred on mobile, bottom-right on desktop — clear of the
-          checkout sheet, which is the one thing that must not be covered. */}
+      {/* Top-centred on mobile, bottom-right on desktop.
+
+          Mobile moved to the top because the bottom edge is already spoken for
+          twice — the tab bar owns it, and every payment raises a sheet out of
+          it. A toast down there was either sitting behind the bar or on top of
+          the button the user was reaching for, and a notification that competes
+          with the primary action is worse than no notification. Desktop has
+          empty corners, so it keeps the conventional bottom-right. */}
       <div
         aria-live="polite"
         aria-atomic="false"
-        className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 p-4 sm:items-end sm:p-6"
+        className="toast-stack pointer-events-none fixed left-0 right-0 top-0 z-[60] flex flex-col items-center gap-2 px-4 pt-[max(0.75rem,env(safe-area-inset-top,0px))] sm:px-6 lg:bottom-6 lg:left-auto lg:right-6 lg:top-auto lg:w-96 lg:items-end lg:px-0 lg:pt-0"
       >
         {toasts.map((toast) => {
           const tone = TONES[toast.tone] ?? TONES.info;

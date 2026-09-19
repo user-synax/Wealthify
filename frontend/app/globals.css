@@ -81,6 +81,10 @@
   --badge-slide-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --badge-pop-ease: cubic-bezier(0.34, 1.36, 0.64, 1);
   --badge-close-ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Height of the mobile bottom tab bar, excluding the safe-area inset. The
+     scroll container reserves this plus the inset. */
+  --tabbar-h: 3.75rem;
   --duration-fast: 250ms; /* icon swap, dropdown/modal open, tabs sliding */
   --duration-medium: 350ms; /* panel close, toast close */
   --duration-slow: 400ms; /* panel open, skeleton reveal, input clear */
@@ -251,6 +255,144 @@ body {
   color: var(--ink);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
     "Segoe UI", Helvetica, sans-serif;
+}
+
+/* ----------------------------------------------------------------------------
+   Native-feel base.
+
+   Four properties, and they are the difference between an app you happen to be
+   viewing in a browser and one that feels handled rather than read.
+   -------------------------------------------------------------------------- */
+
+html {
+  /* The grey rectangle the browser paints over a tapped element. It is a
+     rectangle around the whole node regardless of its shape, which is why it
+     reads as "web page" more than any other single thing. Every press state in
+     this app is drawn deliberately instead. */
+  -webkit-tap-highlight-color: transparent;
+
+  /* Rubber-banding past the end of the document is a browsing affordance. An
+     app that owns its own scrolling should stop where its content stops. */
+  overscroll-behavior-y: none;
+
+  /* iOS inflates text it decides is too small for the column, and does it again
+     on rotation and again on every launch of an installed app. A 15px label
+     renders at 17px and every card reflows around it. This says the layout
+     already accounts for the viewport, which is true — the whole system is
+     measured in rems against a fixed root size. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+
+  /* Horizontal scrolling is not something a phone app does. This is a guard
+     rather than the fix — the causes are real and were corrected where they
+     were found (a bare `grid` sizes its implicit column to its items'
+     min-content, so one `truncate` line inside could push a card 33px past the
+     screen). It stays because a single future card can reintroduce that, and
+     the symptom users see is the whole page sliding sideways.
+
+     `clip` and not `hidden`: `hidden` would make the root a scroll container
+     and break `position: sticky` for the header and the tab bar. */
+  overflow-x: clip;
+}
+
+body {
+  /* Every control otherwise waits up to 300ms to find out whether a second tap
+     is coming. This keeps pinch-zoom and removes the wait. */
+  touch-action: manipulation;
+}
+
+/* iOS Safari zooms the whole page when a field under 16px takes focus. It is not
+   a scale — the page stays zoomed after the keyboard dismisses, leaving the app
+   cropped until the user pinches back out. The auth fields are already authored
+   at 16px for this reason; this is the guard for any field that is not, and it
+   is scoped to coarse pointers so a desktop browser keeps the tighter type. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Surfaces that should behave like an instrument panel, not like a document:
+   the tab bar, the nav rows, the keypad. Nobody wants to select the word
+   "Income" by accident on the way to tapping it — nor, on iOS, get a long-press
+   callout asking whether to copy it. */
+.app-chrome {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* Safe areas. Each resolves to 0px on a device without a notch and in a desktop
+   browser, so they are safe to apply unconditionally — which is what lets the
+   tab bar sit flush against the home indicator on iOS and ignore it elsewhere. */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Fixed chrome that already had spacing of its own before there was a notch to
+   avoid — the landing nav, the auth brand strip. `max()` returns the authored
+   value on every device without an inset, so the browser and the installed app
+   stay identical until there is genuinely something to clear. `env()` alone
+   would collide with the element's own padding utility and silently win.
+
+   The breakpoints are baked in rather than composed from `pt-*`/`sm:pt-*`
+   utilities: this file is unlayered, and unlayered CSS beats Tailwind's layered
+   utilities at every breakpoint, so a paired `sm:pt-5` would simply never win. */
+.safe-top-4 {
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
+}
+
+@media (min-width: 640px) {
+  .safe-top-4 {
+    padding-top: max(1.25rem, env(safe-area-inset-top, 0px));
+  }
+}
+
+/* A bottom sheet is pinned to the physical edge of the screen, so its last row
+   of content has to clear the home indicator — a flat 20px does not, and the
+   final button ends up under the pill. Only applies where the sheet is
+   bottom-anchored: from `sm` up it is centred with a margin and the inset is
+   not its to spend, which is why the reset lives here instead of in the
+   component. */
+.safe-sheet-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (min-width: 640px) {
+  .safe-sheet-bottom {
+    padding-bottom: 0;
+  }
+}
+
+/* Toasts enter from the bottom edge on desktop, where the corner is empty, and
+   from the top on mobile, where the bottom edge is the tab bar and every
+   payment raises a sheet out of it — a toast there is either hidden behind the
+   bar or sitting on top of the button the user is reaching for. The entrance
+   direction is part of the position, so the distance token flips sign with it:
+   sliding up from a top-anchored stack would read as arriving from behind the
+   status bar. */
+.toast-stack {
+  --toast-distance: -16px;
+}
+
+@media (min-width: 1024px) {
+  .toast-stack {
+    --toast-distance: 16px;
+  }
+}
+
+/* The tab bar is fixed, so the scroll container has to reserve its height or
+   the last card on every page sits underneath it. */
+@media (max-width: 1023px) {
+  .app-main {
+    padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 1.5rem);
+  }
 }
 
 /* transitions-dev #02 - Number pop-in. The keyframes stay at the top level so
@@ -961,6 +1103,21 @@ body {
     padding: 3px;
     border-radius: 48px;
     background: var(--surface);
+
+    /* The strip scrolls sideways on a narrow screen, which makes it the one
+       horizontal scroller in the app. The bar is hidden because a native
+       segmented control has none, and it is a 2px grey line across the middle
+       of an otherwise flat pill. The strip still scrolls by touch.
+
+       `overscroll-behavior-x: contain` stops the gesture chaining out of the
+       strip once it hits its end — without it, a swipe that continues past the
+       last tab becomes the browser's own back-navigation swipe, so reaching for
+       "Shopping" can navigate away from the store. */
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+  .t-tabs::-webkit-scrollbar {
+    display: none;
   }
   .t-tab {
     position: relative;

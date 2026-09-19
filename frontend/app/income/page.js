@@ -471,7 +471,7 @@ export default function IncomePage() {
         </div>
         <div className="flex flex-wrap items-stretch gap-3">
           {pendingTotal > 0 && (
-            <div className="rounded-xl border border-[color-mix(in_srgb,var(--brand-orange)_40%,white)] bg-[color-mix(in_srgb,var(--brand-orange)_7%,white)] px-4 py-3">
+            <div className="min-w-[8.5rem] flex-1 rounded-xl border border-[color-mix(in_srgb,var(--brand-orange)_40%,white)] bg-[color-mix(in_srgb,var(--brand-orange)_7%,white)] px-4 py-3 sm:flex-none">
               <p className="text-[12px] font-medium text-[var(--brand-orange-deep)]">
                 Awaiting transfer
               </p>
@@ -484,7 +484,10 @@ export default function IncomePage() {
               />
             </div>
           )}
-          <div className="rounded-xl border border-hairline bg-canvas px-4 py-3">
+          {/* Two balance cards share the width on a phone instead of each
+              shrink-wrapping to its own label, which left the pair ragged and
+              half the row empty. */}
+          <div className="min-w-[8.5rem] flex-1 rounded-xl border border-hairline bg-canvas px-4 py-3 sm:flex-none">
             <p className="text-[12px] font-medium text-steel">In your wallet</p>
             <AnimatedNumber
               value={wallet?.cashBalance ?? 0}

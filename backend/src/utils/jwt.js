@@ -44,10 +44,12 @@ export function verifyToken(token) {
 }
 
 function baseCookieOptions() {
+  const crossSite = config.isProd || config.frontendUrl.startsWith("https://");
+
   return {
     httpOnly: true,
-    sameSite: config.isProd ? "none" : "lax",
-    secure: config.isProd,
+    sameSite: crossSite ? "none" : "lax",
+    secure: crossSite,
     path: "/",
     maxAge: AUTH_COOKIE_MAX_AGE_MS,
   };

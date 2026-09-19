@@ -25,6 +25,14 @@ const STEPS = {
   confirm: { title: "Confirm the new PIN", mode: "confirm" },
 };
 
+/* Loud is the default the synth is built for; quiet exists so the feature is
+   not simply switched off by anyone sharing a room. */
+const VOLUME_OPTIONS = [
+  { id: "quiet", label: "Quiet" },
+  { id: "normal", label: "Normal" },
+  { id: "loud", label: "Loud" },
+];
+
 export default function PaymentSettings() {
   const { user, refresh } = useAuth();
   const feedback = usePaymentFeedback();
@@ -109,14 +117,45 @@ export default function PaymentSettings() {
           }
           checked={feedback.sound}
           disabled={!feedback.supported.sound}
-          onChange={(next) => {
-            feedback.setSound(next);
-            // Preview on switching on, so the choice is audible immediately.
-            if (next && feedback.supported.sound) {
-              setTimeout(() => feedback.play("credit"), 0);
-            }
-          }}
+          // The provider previews on enable, so the toggle demonstrates itself.
+          onChange={(next) => feedback.setSound(next)}
         />
+
+        {feedback.supported.sound && feedback.sound && (
+          <div className="flex items-start justify-between gap-4 border-t border-hairline pt-4">
+            <div className="min-w-0">
+              <p className="text-[14px] font-medium text-charcoal">Payment volume</p>
+              <p className="mt-0.5 text-[12px] leading-[1.5] text-steel">
+                How loudly a payment lands. Choosing a level plays it once.
+              </p>
+            </div>
+            <div
+              role="radiogroup"
+              aria-label="Payment volume"
+              className="flex shrink-0 gap-0.5 rounded-lg border border-hairline bg-surface-soft p-0.5"
+            >
+              {VOLUME_OPTIONS.map((option) => {
+                const selected = feedback.volume === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => feedback.setVolume(option.id)}
+                    className={`focus-ring rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors ${
+                      selected
+                        ? "bg-canvas text-ink shadow-[rgba(15,15,15,0.06)_0px_1px_2px]"
+                        : "text-steel hover:text-charcoal"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <Toggle
           id="pref-haptics"

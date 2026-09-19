@@ -1,14 +1,15 @@
 /* ----------------------------------------------------------------------------
    Income catalog: the career ladder, freelance gigs and daily tasks.
 
-   Same authority rule as the store — the client references an `id`, the tier
-   and cooldown live here, and every reward is recalculated server-side on the
+   Same authority rule as the store — the client references an `id`, the price
+   and the clock live here, and every reward is recalculated server-side on the
    way in. Nothing in this file can be influenced by a request body.
 
-   Anti-farming (PRD section 9) is enforced in three layers: a per-gig cooldown
-   the server times itself, a per-cycle cap on how many gigs can be worked, and
-   a hard cap on daily task payouts. The cooldown is the only one the user
-   feels; the caps are what stop an automated client.
+   Anti-farming (PRD section 9) is enforced in three layers: a per-cycle cap on
+   how many jobs can be taken, the three-slot limit on work in flight, and a
+   hard cap on daily task payouts. The slot limit is the one the user actually
+   feels — it is a pacing device, not a punishment — and the caps are what stop
+   an automated client.
    -------------------------------------------------------------------------- */
 
 const rupees = (value) => Math.round(value * 100);
@@ -85,54 +86,195 @@ export function resolveCareer({ career, xp }) {
 }
 
 /* --- Freelance gigs --------------------------------------------------------
-   Short, repeatable actions the user can take right now. `cooldownSec` is real
-   time, measured from the server's record of the last completion. */
+   A gig is no longer a button that pays instantly. Starting one opens a real
+   timer: the client's brief is yours, `durationSec` is how long the work takes
+   in real seconds, and the money only becomes yours once the timer runs out and
+   you transfer it out of the client's escrow.
+
+   `skill` + `level` gate the board. The three Lv0 jobs are open to everyone —
+   and there are exactly three of them, so a brand new account holding no
+   skills at all can still fill all three of its slots without paying for a
+   course first. Everything above them is locked behind a course the user had
+   to buy and wait out. */
 export const GIGS = [
   {
     id: "delivery-runs",
     name: "Delivery runs",
     icon: "Scooter",
+    skill: "logistics",
+    level: 0,
     difficulty: "Easy",
-    reward: rupees(450),
-    cooldownSec: 30,
-    xp: 12,
-    blurb: "An evening of picking up and dropping off.",
+    reward: rupees(500),
+    durationSec: 20,
+    xp: 14,
+    blurb: "An evening of pickups and drop-offs for a local courier.",
   },
   {
     id: "tutoring",
     name: "Tutoring session",
     icon: "GraduationCap",
+    skill: "writing",
+    level: 0,
     difficulty: "Easy",
-    reward: rupees(900),
-    cooldownSec: 75,
-    xp: 20,
-    blurb: "One hour with a school student. Steady, reliable money.",
+    reward: rupees(1_100),
+    durationSec: 40,
+    xp: 22,
+    blurb: "One session with a school student. Steady, reliable money.",
   },
   {
-    id: "design-brief",
-    name: "Freelance design brief",
-    icon: "PaintBrush",
+    id: "flyer-drop",
+    name: "Flyer drop",
+    icon: "ShareNetwork",
+    skill: "logistics",
+    level: 0,
+    difficulty: "Easy",
+    reward: rupees(700),
+    durationSec: 30,
+    xp: 16,
+    blurb: "Two hundred flyers through the right letterboxes.",
+  },
+  {
+    id: "social-posts",
+    name: "Social media posts",
+    icon: "Megaphone",
+    skill: "marketing",
+    level: 1,
+    difficulty: "Easy",
+    reward: rupees(2_200),
+    durationSec: 55,
+    xp: 30,
+    blurb: "A week of posts for a cafe that has never had a content plan.",
+  },
+  {
+    id: "storefront-setup",
+    name: "Storefront setup",
+    icon: "Storefront",
+    skill: "logistics",
+    level: 2,
     difficulty: "Medium",
-    reward: rupees(2_400),
-    cooldownSec: 150,
-    xp: 34,
-    blurb: "A logo and two revisions, delivered by morning.",
+    reward: rupees(5_000),
+    durationSec: 100,
+    xp: 45,
+    blurb: "Stock, shelves and a delivery route for a new shop.",
+  },
+  {
+    id: "blog-article",
+    name: "Blog article",
+    icon: "Notebook",
+    skill: "writing",
+    level: 2,
+    difficulty: "Medium",
+    reward: rupees(4_200),
+    durationSec: 90,
+    xp: 42,
+    blurb: "1,500 words researched, written and filed before the deadline.",
+  },
+  {
+    id: "logo-brief",
+    name: "Logo & brand brief",
+    icon: "PaintBrush",
+    skill: "design",
+    level: 2,
+    difficulty: "Medium",
+    reward: rupees(5_600),
+    durationSec: 110,
+    xp: 48,
+    blurb: "A mark and two revisions, delivered by morning.",
+  },
+  {
+    id: "photo-shoot",
+    name: "Product photo shoot",
+    icon: "Camera",
+    skill: "media",
+    level: 2,
+    difficulty: "Medium",
+    reward: rupees(6_400),
+    durationSec: 130,
+    xp: 50,
+    blurb: "Forty shots on white, retouched and handed over.",
+  },
+  {
+    id: "landing-page",
+    name: "Landing page build",
+    icon: "Code",
+    skill: "code",
+    level: 3,
+    difficulty: "Hard",
+    reward: rupees(13_000),
+    durationSec: 190,
+    xp: 72,
+    blurb: "A launch page that has to be live before the campaign starts.",
+  },
+  {
+    id: "ad-campaign",
+    name: "Ad campaign setup",
+    icon: "ChartPieSlice",
+    skill: "marketing",
+    level: 3,
+    difficulty: "Hard",
+    reward: rupees(15_000),
+    durationSec: 210,
+    xp: 78,
+    blurb: "Audiences, creative and a budget the client will actually defend.",
+  },
+  {
+    id: "brand-system",
+    name: "Full brand system",
+    icon: "Palette",
+    skill: "design",
+    level: 4,
+    difficulty: "Hard",
+    reward: rupees(27_000),
+    durationSec: 300,
+    xp: 112,
+    blurb: "Type, colour, motion and a handbook nobody will read.",
+  },
+  {
+    id: "video-series",
+    name: "Video series edit",
+    icon: "VideoCamera",
+    skill: "media",
+    level: 4,
+    difficulty: "Hard",
+    reward: rupees(29_000),
+    durationSec: 310,
+    xp: 120,
+    blurb: "Six episodes cut, graded and captioned for a launch.",
+  },
+  {
+    id: "app-feature",
+    name: "App feature sprint",
+    icon: "Toolbox",
+    skill: "code",
+    level: 4,
+    difficulty: "Hard",
+    reward: rupees(35_000),
+    durationSec: 330,
+    xp: 132,
+    blurb: "A shipped feature with tests, in someone else's codebase.",
   },
   {
     id: "consulting",
     name: "Weekend consulting",
     icon: "Briefcase",
-    difficulty: "Hard",
-    reward: rupees(6_000),
-    cooldownSec: 300,
-    xp: 55,
-    blurb: "Four hours of advisory work at a premium rate.",
+    skill: "marketing",
+    level: 5,
+    difficulty: "Premium",
+    reward: rupees(50_000),
+    durationSec: 400,
+    xp: 165,
+    blurb: "Advisory work at a rate only a specialist can quote.",
   },
 ];
 
 export const GIGS_BY_ID = new Map(GIGS.map((g) => [g.id, g]));
 
-export const GIGS_PER_CYCLE_CAP = 40;
+export const GIGS_PER_CYCLE_CAP = 60;
+
+/* How many jobs and courses can be in flight at once. Three is enough that a
+   skilled freelancer can stack overlapping timers, and few enough that the
+   board still feels like a choice. */
+export const ENGAGEMENT_SLOTS = 3;
 
 /* --- Daily tasks ----------------------------------------------------------
    Capped per *real* day (not per cycle) so the cap cannot be reset by the

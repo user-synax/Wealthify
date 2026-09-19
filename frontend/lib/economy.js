@@ -47,12 +47,40 @@ export const fetchReceipt = (id, signal) =>
 /* --- Income -------------------------------------------------------------- */
 export const fetchIncome = (signal) => apiRequest("/api/income", { signal });
 
-export const workGig = ({ id, clientKey, signal }) =>
-  apiRequest(`/api/income/gigs/${id}/work`, {
+/* Starting a job moves no money, so it needs no key: the server's unique index
+   on live runs is what makes a double tap safe, and it answers the second tap
+   with the run the first one opened. */
+export const startGig = ({ id, signal }) =>
+  apiRequest(`/api/income/gigs/${id}/start`, { method: "POST", body: {}, signal });
+
+/* A course is a payment, so it carries the same credential and the same
+   idempotency key as anything else bought in the app. */
+export const enrolCourse = ({ id, paymentMethod, pin, clientKey, signal }) =>
+  apiRequest(`/api/income/courses/${id}/enroll`, {
+    method: "POST",
+    body: { paymentMethod, pin, idempotencyKey: key(clientKey) },
+    signal,
+  });
+
+/* Transferring a finished job's escrow into the wallet. The label the user sees
+   is "Transfer"; the money lands as a normal income entry with a receipt. */
+export const transferEarnings = ({ id, clientKey, signal }) =>
+  apiRequest(`/api/income/engagements/${id}/transfer`, {
     method: "POST",
     body: { idempotencyKey: key(clientKey) },
     signal,
   });
+
+export const transferAllEarnings = ({ clientKey, signal }) =>
+  apiRequest("/api/income/earnings/transfer", {
+    method: "POST",
+    body: { idempotencyKey: key(clientKey) },
+    signal,
+  });
+
+/* Claiming a finished course. No money moves, so no key is needed. */
+export const collectCourse = ({ id, signal }) =>
+  apiRequest(`/api/income/engagements/${id}/collect`, { method: "POST", body: {}, signal });
 
 export const completeTask = ({ id, clientKey, signal }) =>
   apiRequest(`/api/income/tasks/${id}/complete`, {

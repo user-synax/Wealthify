@@ -2,9 +2,8 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { requireAuth } from "../middleware/auth.js";
 import { badRequest, notFound, tooMany } from "../utils/http-error.js";
-import { Inventory } from "../models/Inventory.js";
+import { Engagement } from "../models/Engagement.js";
 import {
-  GIGS,
   GIGS_BY_ID,
   GIGS_PER_CYCLE_CAP,
   TASKS,
@@ -14,21 +13,40 @@ import {
   careerFor,
   resolveCareer,
   streakBonusPct,
-  variancePct,
 } from "../data/income.js";
-import { rewardBonusPct } from "../data/catalog.js";
+import {
+  COURSE_LEVELS,
+  SKILLS,
+  SKILL_LEVEL_MAX,
+  courseFor,
+  parseCourseId,
+  skillLevel,
+  totalSkillLevels,
+} from "../data/skills.js";
 import { careerJson, buildReceipt } from "../services/receipts.js";
 import { postEntry } from "../services/ledger.js";
 import { awardXp, levelForXp, syncEconomy } from "../services/economy.js";
+import { verifyPin } from "../services/payments.js";
 import { daysBetweenKeys, realDayKey } from "../services/clock.js";
+import {
+  bonusContext,
+  collectCourse,
+  engagementJson,
+  gigBoard,
+  pendingPayout,
+  slotState,
+  startCourse,
+  startGig,
+  transferGig,
+  transferReady,
+} from "../services/engagements.js";
 
 export const incomeRouter = Router();
 incomeRouter.use(requireAuth);
 
-/* Working a gig is the most repeatable action in the app, so it is the one
-   most worth grinding. The per-gig cooldown below is the real gate; this
-   limiter only stops a script from hammering the endpoint faster than a human
-   could ever hope to. */
+/* Starting work is still the most repeatable action in the app, so it keeps its
+   limiter. The real gates are the slot count and the per-cycle job cap; this
+   only stops a script from opening engagements faster than a person could. */
 const workLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
@@ -40,34 +58,35 @@ const workLimiter = rateLimit({
 const isIdempotencyKey = (value) =>
   typeof value === "string" && /^[\w:-]{8,120}$/.test(value);
 
-async function bonusContext(userId) {
-  const rows = await Inventory.find({ userId }).select("sku").lean();
-  return rewardBonusPct(rows.map((row) => row.sku));
+/* --- Shared reads ---------------------------------------------------------- */
+
+async function loadOpen(userId) {
+  const rows = await Engagement.find({ userId, settled: false }).sort({ finishesAt: 1 });
+  return { rows, byRef: new Map(rows.map((row) => [row.refId, row])) };
 }
 
-function gigView(gig, user, { bonusPct, now }) {
-  const last = user.lastGigAt?.get?.(gig.id);
-  const lastAt = last ? new Date(last).getTime() : 0;
-  const readyAt = lastAt + gig.cooldownSec * 1000;
-  const remainingMs = Math.max(0, readyAt - now);
+/** One skill card: where the user is, and what the next step costs. */
+function skillView(skill, user, { rows, wallet, now }) {
+  const level = skillLevel(user.skills, skill.id);
+  const run = rows.find((row) => row.kind === "course" && row.skillId === skill.id) ?? null;
+  const next = level < SKILL_LEVEL_MAX ? courseFor(skill.id, level + 1) : null;
 
   return {
-    id: gig.id,
-    name: gig.name,
-    icon: gig.icon,
-    difficulty: gig.difficulty,
-    blurb: gig.blurb,
-    cooldownSec: gig.cooldownSec,
-    xp: gig.xp,
-    baseReward: gig.reward,
-    // What the user would actually receive right now, which is what the button
-    // should promise. It includes their gear bonus, so buying a laptop visibly
-    // raises this number.
-    expectedReward: applyPct(gig.reward, bonusPct),
-    bonusPct,
-    ready: remainingMs === 0,
-    readyAt: remainingMs === 0 ? null : new Date(readyAt).toISOString(),
-    cooldownRemainingMs: remainingMs,
+    id: skill.id,
+    name: skill.name,
+    icon: skill.icon,
+    accent: skill.accent,
+    blurb: skill.blurb,
+    level,
+    maxLevel: SKILL_LEVEL_MAX,
+    course: next
+      ? {
+          ...next,
+          affordable: wallet.cashBalance >= next.cost,
+          shortfall: Math.max(0, next.cost - wallet.cashBalance),
+        }
+      : null,
+    run: run ? engagementJson(run, now) : null,
   };
 }
 
@@ -84,6 +103,9 @@ incomeRouter.get("/", async (req, res, next) => {
 
     const nextCycleAt = new Date(clock.nextCycleAt).getTime();
     const salaryReady = wallet.lastSalaryCycle < cycle;
+
+    const { rows, byRef } = await loadOpen(req.user._id);
+    const slots = await slotState(req.user._id, now);
 
     return res.json({
       wallet,
@@ -110,8 +132,17 @@ incomeRouter.get("/", async (req, res, next) => {
         best: req.user.bestStreak,
         bonusPct: streakBonusPct(req.user.streak),
       },
-      gigs: GIGS.map((gig) => gigView(gig, req.user, { bonusPct, now })),
+
+      totalSkillLevels: totalSkillLevels(req.user.skills),
+      courseLevels: COURSE_LEVELS,
+      skills: SKILLS.map((skill) => skillView(skill, req.user, { rows, wallet, now })),
+
+      gigs: gigBoard(req.user, { bonusPct, openByRef: byRef }),
+      engagements: rows.map((row) => engagementJson(row, now)),
+      pending: await pendingPayout(req.user._id, now),
+      slots,
       gigCap: { used: req.user.gigsThisCycle, max: GIGS_PER_CYCLE_CAP },
+
       tasks: TASKS.map((task) => ({
         id: task.id,
         name: task.name,
@@ -129,96 +160,164 @@ incomeRouter.get("/", async (req, res, next) => {
   }
 });
 
-/* POST /api/income/gigs/:id/work */
-incomeRouter.post("/gigs/:id/work", workLimiter, async (req, res, next) => {
+/* --- The board ------------------------------------------------------------- */
+
+/* POST /api/income/gigs/:id/start
+   Opens a timed engagement. No money moves here — that is the entire point.
+   Three slots, one live run per job, and the quote is fixed at this moment. */
+incomeRouter.post("/gigs/:id/start", workLimiter, async (req, res, next) => {
   try {
     const gig = GIGS_BY_ID.get(req.params.id);
     if (!gig) throw notFound("GIG_NOT_FOUND", { message: "That job is not on the board." });
 
-    const idempotencyKey = req.body?.idempotencyKey;
-    if (!isIdempotencyKey(idempotencyKey)) {
-      throw badRequest("IDEMPOTENCY_KEY_REQUIRED", { message: "Missing idempotency key." });
-    }
+    const result = await startGig({ user: req.user, gig });
 
-    const { cycle, clock } = await syncEconomy(req.user);
-    const now = Date.now();
-
-    if (req.user.gigsThisCycle >= GIGS_PER_CYCLE_CAP) {
-      throw tooMany("GIG_CAP_REACHED", {
-        message: `You have worked the maximum ${GIGS_PER_CYCLE_CAP} jobs this simulated month.`,
-        details: { cap: GIGS_PER_CYCLE_CAP, used: req.user.gigsThisCycle, resetAt: clock.nextCycleAt },
-      });
-    }
-
-    const last = req.user.lastGigAt?.get?.(gig.id);
-    const readyAt = last ? new Date(last).getTime() + gig.cooldownSec * 1000 : 0;
-    if (readyAt > now) {
-      throw tooMany("GIG_COOLDOWN", {
-        message: `${gig.name} needs a moment before it comes round again.`,
-        details: { retryInMs: readyAt - now, readyAt: new Date(readyAt).toISOString() },
-      });
-    }
-
-    const bonusPct = await bonusContext(req.user._id);
-    const roll = variancePct(`${gig.id}:${req.user.gigsThisCycle}:${cycle}`);
-    const gross = applyPct(applyPct(gig.reward, bonusPct), roll);
-
-    const { transaction, wallet, replay } = await postEntry({
-      user: req.user,
-      type: "income",
-      direction: "credit",
-      amount: gross,
-      category: "gig",
-      description: gig.name,
-      paymentMethod: "system",
-      idempotencyKey: `gig:${req.user._id}:${idempotencyKey}`,
-      simCycle: cycle,
-      metadata: {
-        icon: gig.icon,
-        merchant: "Freelance client",
-        note: roll === 0 ? "Paid at the quoted rate." : roll > 0 ? "The client rounded up." : "The client haggled you down.",
-        items: [
-          { label: gig.name, amount: gig.reward },
-          ...(bonusPct ? [{ label: `Gear bonus +${bonusPct}%`, amount: applyPct(gig.reward, bonusPct) - gig.reward }] : []),
-          ...(roll ? [{ label: roll > 0 ? "Negotiated up" : "Negotiated down", amount: gross - applyPct(gig.reward, bonusPct) }] : []),
-        ],
-      },
-    });
-
-    let leveledUp = false;
-    if (!replay) {
-      req.user.gigsThisCycle += 1;
-      req.user.lastGigAt.set(gig.id, new Date(now));
-      req.user.markModified("lastGigAt");
-      leveledUp = awardXp(req.user, gig.xp);
-      await req.user.save();
-    }
-
-    return res.status(201).json({
-      receipt: buildReceipt({
-        transaction,
-        wallet,
-        user: req.user,
-        cycle,
-        extra: {
-          merchant: "Freelance client",
-          note: "Credited straight to your available balance.",
-          xp: gig.xp,
-          leveledUp,
-          level: req.user.level,
-          replay,
-        },
-      }),
-      clock,
-      gig: gigView(gig, req.user, { bonusPct, now: Date.now() }),
+    return res.status(result.replay ? 200 : 201).json({
+      engagement: engagementJson(result.engagement),
+      replay: result.replay,
+      slots: await slotState(req.user._id),
       gigCap: { used: req.user.gigsThisCycle, max: GIGS_PER_CYCLE_CAP },
+      clock: result.clock,
     });
   } catch (err) {
     return next(err);
   }
 });
 
-/* POST /api/income/tasks/:id/complete
+/* POST /api/income/courses/:id/enroll
+   A course is paid for like anything else in the app — same PIN, same ledger,
+   same receipt — and then it runs on its own. Paying is the investment; the
+   wait is the cost of not being on the board. */
+incomeRouter.post("/courses/:id/enroll", workLimiter, async (req, res, next) => {
+  try {
+    const parsed = parseCourseId(req.params.id);
+    const course = parsed ? courseFor(parsed.skillId, parsed.level) : null;
+    if (!course) throw notFound("COURSE_NOT_FOUND", { message: "That course does not exist." });
+
+    const idempotencyKey = req.body?.idempotencyKey;
+    if (!isIdempotencyKey(idempotencyKey)) {
+      throw badRequest("IDEMPOTENCY_KEY_REQUIRED", { message: "Missing idempotency key." });
+    }
+
+    // PIN first, then money: a wrong PIN must not leak whether the balance was
+    // sufficient and must not burn the enrollment.
+    await verifyPin(req.user, req.body?.pin);
+
+    const result = await startCourse({
+      user: req.user,
+      course,
+      idempotencyKey,
+    });
+
+    return res.status(result.replay ? 200 : 201).json({
+      receipt: buildReceipt({
+        transaction: result.transaction,
+        wallet: result.wallet,
+        user: req.user,
+        cycle: result.cycle,
+        extra: {
+          merchant: "Wealthify Academy",
+          note: `Enrolled. ${course.name} finishes in ${Math.round(course.durationSec)}s.`,
+          replay: result.replay,
+        },
+      }),
+      engagement: engagementJson(result.engagement),
+      slots: await slotState(req.user._id),
+      clock: result.clock,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/* --- Collecting ------------------------------------------------------------ */
+
+/* POST /api/income/engagements/:id/transfer
+   A finished job's escrow into the wallet. This is the transfer the whole
+   feature exists to make you press, so it is a real ledger entry with a real
+   reference and a receipt. */
+incomeRouter.post("/engagements/:id/transfer", workLimiter, async (req, res, next) => {
+  try {
+    const idempotencyKey = req.body?.idempotencyKey;
+    if (!isIdempotencyKey(idempotencyKey)) {
+      throw badRequest("IDEMPOTENCY_KEY_REQUIRED", { message: "Missing idempotency key." });
+    }
+
+    const result = await transferGig({
+      user: req.user,
+      id: req.params.id,
+      idempotencyKey,
+    });
+
+    return res.status(201).json({
+      receipt: buildReceipt({
+        transaction: result.transaction,
+        wallet: result.wallet,
+        user: req.user,
+        cycle: result.cycle,
+        extra: {
+          merchant: "Freelance client",
+          note: "Transferred from escrow into your wallet.",
+          replay: result.replay,
+        },
+      }),
+      engagement: engagementJson(result.engagement),
+      pending: await pendingPayout(req.user._id),
+      slots: await slotState(req.user._id),
+      clock: result.clock,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/* POST /api/income/engagements/:id/collect — claim a finished course. */
+incomeRouter.post("/engagements/:id/collect", workLimiter, async (req, res, next) => {
+  try {
+    const result = await collectCourse({ user: req.user, id: req.params.id });
+
+    return res.status(201).json({
+      engagement: engagementJson(result.engagement),
+      skill: result.skill,
+      xp: result.xp,
+      leveledUp: result.leveledUp,
+      level: result.level,
+      slots: await slotState(req.user._id),
+      clock: result.clock,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/* POST /api/income/earnings/transfer — transfer everything that is waiting.
+   Each payout keeps its own ledger entry, so the batch is as auditable as
+   pressing the button three times, and it replays the same way. */
+incomeRouter.post("/earnings/transfer", workLimiter, async (req, res, next) => {
+  try {
+    const idempotencyKey = req.body?.idempotencyKey;
+    if (!isIdempotencyKey(idempotencyKey)) {
+      throw badRequest("IDEMPOTENCY_KEY_REQUIRED", { message: "Missing idempotency key." });
+    }
+
+    const result = await transferReady({ user: req.user, idempotencyKey });
+    if (!result.transfers.length) {
+      throw tooMany("NOTHING_TO_TRANSFER", {
+        message: "Nothing has finished yet. Let the timers run.",
+      });
+    }
+
+    return res.status(201).json({
+      ...result,
+      pending: await pendingPayout(req.user._id),
+      slots: await slotState(req.user._id),
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/* --- Daily tasks -----------------------------------------------------------
    Capped by *real* day so the simulated clock cannot be used to reset it, and
    the streak is a real-day streak for the same reason. */
 incomeRouter.post("/tasks/:id/complete", workLimiter, async (req, res, next) => {
@@ -253,8 +352,6 @@ incomeRouter.post("/tasks/:id/complete", workLimiter, async (req, res, next) => 
       });
     }
 
-    // Completing a task is what continues the streak, so a first task on a new
-    // day is the moment the counter advances.
     const firstToday = req.user.tasksToday === 0;
     const streakAfter = firstToday ? req.user.streak + 1 : Math.max(1, req.user.streak);
     const gross = applyPct(task.reward, streakBonusPct(streakAfter));

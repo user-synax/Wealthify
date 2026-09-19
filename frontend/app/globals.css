@@ -1032,7 +1032,30 @@ body {
     animation: t-processing-sweep var(--processing-pulse-dur) var(--ease-linear) infinite;
   }
 
+  /* The live marker beside the step a payment sequence is currently on. A
+     breathing dot rather than a spinner: ten spinners stacked in a list read
+     as ten things happening at once. */
+  .t-processing-dot {
+    animation: t-processing-dot-pulse 1s var(--ease-standard) infinite;
+  }
+
+  @keyframes t-processing-dot-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.35;
+      transform: scale(0.7);
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
+    .t-processing-dot {
+      animation: none !important;
+    }
+
     .t-pin-dot.is-filled {
       animation: none !important;
     }

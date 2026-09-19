@@ -23,40 +23,116 @@ import { ApiError, formatPaise, newIdempotencyKey } from "../lib/api";
    the way a real one behaves rather than as a single button:
 
      review    -> what you are buying, from where, and what you will have left
-     pin       -> the credential step, which is genuinely blocking
-     processing-> staged progress lines, held for a minimum duration
+     sequence  -> the network's own steps, in order, with the PIN inside them
      result    -> the receipt, with the balance the payment produced
 
-   Three deliberate choices:
+   **The sequence is the feature.** A real UPI payment is not one spinner. The
+   app opens, the merchant is verified, a collect request is raised, you approve
+   it with your PIN, your bank debits, the merchant confirms, and a reference is
+   generated. UPI gets ten of those beats; a card gets eight; the internal
+   balance gets five.
 
-   1. **The request starts when the animation does.** The network call is fired
-      the moment processing begins and its result is held until the minimum
-      duration elapses. A real payment is never instant, and a screen that
-      resolves in 40ms reads as a fake, but padding the call afterwards would
-      add that time to every genuine slow request too.
+   Two consequences of how that is built:
 
-   2. **The idempotency key belongs to an attempt, not to the sheet.** It is
-      minted when an attempt starts and reused across network retries of that
-      same attempt. A *declined* attempt mints a new one, because the ledger
-      deliberately refuses to replay a key it already marked failed — so the
-      key is the identity of "this payment", not of "this screen".
+   1. **The PIN sits inside the sequence, not before it.** In reality there is
+      nothing to approve until the collect request exists, so the pad appears at
+      step 4 of 10 with the request already raised behind it. The sheet runs the
+      prelude, hands over to the pad, and only fires the request once the PIN is
+      given.
 
-   3. **Timing on screen is not timing in the ledger.** The staged lines are
-      cosmetic; the balance, the receipt and the reference all come back from
-      the server response and are never computed here.
+   2. **The request starts when the sequence resumes.** The network call is
+      fired the moment the postlude begins and its result is held until the
+      sequence finishes, so the timing on screen is the timing of the sequence
+      and never the timing of the network. Padding a slow request afterwards
+      would add that wait twice.
+
+   The idempotency key belongs to an attempt, not to the sheet: it is minted
+   when an attempt starts and reused across retries of that same attempt. A
+   *declined* attempt mints a new one, because the ledger deliberately refuses
+   to replay a key it already marked failed.
 
    `execute` is injected by the caller, which is why one sheet serves a store
-   order, a bill payment and a savings transfer without branching.
+   order, a bill payment, a course enrolment and a savings transfer without
+   branching.
    -------------------------------------------------------------------------- */
 
-const STAGES = [
-  { label: "Contacting Wealthify", icon: "ShieldCheck" },
-  { label: "Authorising payment", icon: "LockKey" },
-  { label: "Updating your balance", icon: "Wallet" },
-];
+const money = (paise) => formatPaise(paise);
 
-const STAGE_MS = 620;
-const MIN_PROCESSING_MS = 1850;
+/* Each flow: a prelude before the credential, the credential itself, and a
+   postlude after it. `stepMs` is how long one line stays lit. */
+const FLOWS = {
+  upi: {
+    label: "Paying with UPI",
+    stepMs: 380,
+    prelude: [
+      { label: "Opening your UPI app", icon: "QrCode" },
+      { label: "Verifying the merchant", icon: "ShieldCheck" },
+      {
+        label: "Raising the collect request",
+        icon: "ArrowUpRight",
+        cue: "request",
+        detail: (ctx) => `${money(ctx.amount)} requested by ${ctx.merchant}`,
+      },
+    ],
+    pin: { label: "Approving with your UPI PIN", hint: "Enter your 4-digit UPI PIN" },
+    postlude: [
+      { label: "Request sent to your bank", icon: "Bank", detail: () => "UPI · NPCI sandbox" },
+      { label: "Waiting for your approval", icon: "DeviceMobile" },
+      { label: "Authorising the debit", icon: "LockKey" },
+      {
+        label: "Debiting your account",
+        icon: "CurrencyInr",
+        detail: () => "Wealthify Bank ······4821",
+      },
+      { label: "Confirming with the merchant", icon: "Storefront" },
+      { label: "Generating the payment reference", icon: "Receipt" },
+    ],
+  },
+  card: {
+    label: "Paying by card",
+    stepMs: 340,
+    prelude: [
+      { label: "Connecting to the card network", icon: "WifiHigh" },
+      { label: "Verifying the merchant", icon: "ShieldCheck" },
+    ],
+    pin: { label: "Entering your card PIN", hint: "Enter your 4-digit card PIN" },
+    postlude: [
+      { label: "Sending to your card issuer", icon: "Bank" },
+      { label: "Checking 3-D Secure", icon: "ShieldCheck", detail: () => "Verified by Wealthify" },
+      { label: "Authorising the charge", icon: "LockKey" },
+      {
+        label: "Capturing the payment",
+        icon: "CreditCard",
+        detail: () => "Wealthify Card ····7412",
+      },
+      { label: "Confirming with the merchant", icon: "Storefront" },
+    ],
+  },
+  balance: {
+    label: "Paying from your balance",
+    stepMs: 300,
+    prelude: [{ label: "Checking your available balance", icon: "Wallet" }],
+    pin: { label: "Confirming with your PIN", hint: "Enter your 4-digit PIN" },
+    postlude: [
+      { label: "Reserving the amount", icon: "LockKey" },
+      { label: "Debiting your balance", icon: "CurrencyInr" },
+      { label: "Writing the ledger entry", icon: "Receipt" },
+    ],
+  },
+};
+
+const DEFAULT_FLOW = FLOWS.balance;
+
+const flowFor = (method) => FLOWS[method] ?? DEFAULT_FLOW;
+
+/** The flat, numbered sequence including the credential row. */
+function sequenceFor(flow) {
+  return [
+    ...flow.prelude.map((step) => ({ ...step, kind: "step" })),
+    { ...flow.pin, kind: "pin", icon: "LockKey" },
+    ...flow.postlude.map((step) => ({ ...step, kind: "step" })),
+  ];
+}
 
 const FALLBACK_METHODS = [
   { id: "balance", label: "Wealthify balance", hint: "Instant.", icon: "Wallet" },
@@ -77,7 +153,8 @@ export default function CheckoutSheet({
   const [step, setStep] = useState("review");
   const [method, setMethod] = useState("upi");
   const [methods, setMethods] = useState(FALLBACK_METHODS);
-  const [stage, setStage] = useState(0);
+  const [phase, setPhase] = useState("prelude");
+  const [stepIndex, setStepIndex] = useState(0);
   const [error, setError] = useState(null);
   const [errorNonce, setErrorNonce] = useState(0);
   const [lockedUntil, setLockedUntil] = useState(null);
@@ -91,12 +168,16 @@ export default function CheckoutSheet({
   const scrimRef = useRef(null);
   const clientKey = useRef(null);
   const closeTimer = useRef(null);
-  const stageTimer = useRef(null);
+  const seqTimer = useRef(null);
+  const activeRef = useRef(null);
   const feedback = usePaymentFeedback();
 
   const amount = intent?.amount ?? 0;
   const balanceAfter = (wallet?.cashBalance ?? 0) - amount;
   const shortfall = Math.max(0, -balanceAfter);
+
+  const flow = flowFor(method);
+  const sequence = useMemo(() => sequenceFor(flow), [flow]);
 
   /* A fresh intent is a fresh transaction. Callers render this sheet with
      `key={intent.key}`, so opening a second order remounts the component and
@@ -132,6 +213,13 @@ export default function CheckoutSheet({
     };
   }, [open]);
 
+  /* Keep the lit step in view. The UPI sequence is ten rows long and the sheet
+     scrolls; without this the step that is actually happening can sit below the
+     fold while the user watches a stale one. */
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [phase, stepIndex, step]);
+
   /* Two-phase close: `.is-closing` owns the scale-down, then it is removed
      after --modal-close-dur so the next open starts from the resting pre-open
      scale instead of jumping. Dropping the cleanup is the classic bug here. */
@@ -150,7 +238,7 @@ export default function CheckoutSheet({
 
   useEffect(() => () => {
     clearTimeout(closeTimer.current);
-    clearInterval(stageTimer.current);
+    clearTimeout(seqTimer.current);
   }, []);
 
   useEffect(() => {
@@ -162,14 +250,50 @@ export default function CheckoutSheet({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, requestClose]);
 
-  const runStages = useCallback(() => {
-    setStage(0);
-    clearInterval(stageTimer.current);
-    stageTimer.current = setInterval(
-      () => setStage((current) => Math.min(current + 1, STAGES.length - 1)),
-      STAGE_MS,
-    );
-    return () => clearInterval(stageTimer.current);
+  /* --- The sequence ------------------------------------------------------
+     A self-scheduling chain rather than an interval, so it can be stopped
+     mid-flight and so the hand-off into the PIN step is a plain callback
+     instead of another piece of state to reconcile. */
+  const stopSequence = useCallback(() => {
+    clearTimeout(seqTimer.current);
+    seqTimer.current = null;
+  }, []);
+
+  /* `part` is passed in rather than read from state: the caller sets the phase
+     and immediately starts the run, so the state value in this closure would
+     still be the previous one. The offset is what makes the flat sequence
+     array addressable from either half of the flow. */
+  const runSequence = useCallback(
+    (count, part, onDone) => {
+      stopSequence();
+      setStepIndex(0);
+      const offset = part === "prelude" ? 0 : flow.prelude.length + 1;
+      let index = 0;
+
+      const tick = () => {
+        index += 1;
+        if (index >= count) {
+          onDone?.();
+          return;
+        }
+        setStepIndex(index);
+        // One cue per line, which is what makes the sequence audible as
+        // progress rather than as a single spinner noise. A step may override
+        // it — the UPI collect request pings instead of ticking.
+        feedback.play(sequence[offset + index]?.cue ?? "step");
+        seqTimer.current = setTimeout(tick, flow.stepMs);
+      };
+
+      // The first line is already lit, so the chain starts after one beat.
+      seqTimer.current = setTimeout(tick, flow.stepMs);
+    },
+    [stopSequence, sequence, flow.prelude.length, flow.stepMs, feedback],
+  );
+
+  const goToPin = useCallback(() => {
+    setPhase("pin");
+    setStepIndex(0);
+    setStep("pin");
   }, []);
 
   /* --- The attempt ------------------------------------------------------- */
@@ -179,18 +303,22 @@ export default function CheckoutSheet({
       clientKey.current = key;
 
       setStep("processing");
+      setPhase("postlude");
+      setStepIndex(0);
       setBusy(true);
       feedback.play("processing");
-      const stopStages = runStages();
+
       const startedAt = Date.now();
+      const minimum = flow.postlude.length * flow.stepMs;
+      runSequence(flow.postlude.length, "postlude", stopSequence);
 
       try {
         const data = await execute({ pin, paymentMethod: method, clientKey: key });
         const elapsed = Date.now() - startedAt;
-        if (elapsed < MIN_PROCESSING_MS) {
-          await new Promise((resolve) => setTimeout(resolve, MIN_PROCESSING_MS - elapsed));
+        if (elapsed < minimum) {
+          await new Promise((resolve) => setTimeout(resolve, minimum - elapsed));
         }
-        stopStages();
+        stopSequence();
 
         setResult(data);
         setStep("result");
@@ -198,16 +326,19 @@ export default function CheckoutSheet({
         feedback.play(data?.receipt?.direction === "debit" ? "success" : "credit");
         onSuccess?.(data);
       } catch (err) {
-        const wait = Math.max(0, 700 - (Date.now() - startedAt));
+        const wait = Math.max(0, 600 - (Date.now() - startedAt));
         if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
-        stopStages();
+        stopSequence();
 
         setBusy(false);
 
         if (err instanceof ApiError && (err.code === "PIN_INVALID" || err.code === "PIN_FORMAT")) {
           // Wrong credential: the payment did not happen, so send the user back
-          // to the pad rather than to a failure screen.
+          // to the pad — and back to the credential beat of the sequence, which
+          // is where they actually are.
           feedback.play("error");
+          setPhase("pin");
+          setStepIndex(0);
           setStep("pin");
           setError({ code: err.code, message: err.message, attemptsRemaining: err.details?.attemptsRemaining });
           setErrorNonce((n) => n + 1);
@@ -216,6 +347,8 @@ export default function CheckoutSheet({
 
         if (err instanceof ApiError && err.code === "PIN_LOCKED") {
           feedback.play("error");
+          setPhase("pin");
+          setStepIndex(0);
           setStep("pin");
           setLockedUntil(err.details?.retryAt ?? null);
           setError({ code: err.code, message: err.message });
@@ -225,7 +358,7 @@ export default function CheckoutSheet({
 
         if (err instanceof ApiError && err.code === "PIN_REQUIRED") {
           setPinMode("create");
-          setStep("pin");
+          goToPin();
           return;
         }
 
@@ -241,7 +374,7 @@ export default function CheckoutSheet({
         setStep("declined");
       }
     },
-    [execute, method, feedback, onSuccess, runStages],
+    [execute, method, feedback, onSuccess, runSequence, stopSequence, goToPin, flow],
   );
 
   /* --- The credential step ---------------------------------------------- */
@@ -294,6 +427,23 @@ export default function CheckoutSheet({
     [pinMode, pendingPin, onPinCreated, startAttempt, feedback],
   );
 
+  /* --- Leaving the review step ------------------------------------------ */
+  const beginPayment = useCallback(() => {
+    if (!hasPin) setPinMode("create");
+    else setPinMode("enter");
+
+    if (flow.prelude.length === 0) {
+      goToPin();
+      return;
+    }
+
+    setStep("processing");
+    setPhase("prelude");
+    setStepIndex(0);
+    feedback.play("processing");
+    runSequence(flow.prelude.length, "prelude", goToPin);
+  }, [hasPin, flow, runSequence, goToPin, feedback]);
+
   const canPay = Number.isFinite(amount) && amount > 0 && shortfall === 0;
 
   const sheetClass = `t-modal t-sheet ${open && !closing ? "is-open" : ""} ${
@@ -303,13 +453,35 @@ export default function CheckoutSheet({
     closing ? "is-closing" : ""
   }`;
 
+  const totalSteps = sequence.length;
+  const activeIndex =
+    phase === "prelude" ? stepIndex : phase === "pin" ? flow.prelude.length : flow.prelude.length + 1 + stepIndex;
+
   const header = useMemo(() => {
-    if (step === "review") return { title: intent?.title ?? "Confirm payment", onBack: null };
-    if (step === "pin") return { title: "Authorise payment", onBack: () => setStep("review") };
-    if (step === "processing") return { title: "Processing", onBack: null };
-    if (step === "declined") return { title: "Payment declined", onBack: null };
-    return { title: "Payment complete", onBack: null };
-  }, [step, intent?.title]);
+    if (step === "review") return { title: intent?.title ?? "Confirm payment", onBack: null, sub: intent?.merchant };
+    if (step === "pin")
+      return {
+        title: flow.pin.label,
+        onBack: () => setStep("review"),
+        sub: `Step ${flow.prelude.length + 1} of ${totalSteps}`,
+      };
+    if (step === "processing")
+      return {
+        title: flow.label,
+        onBack: null,
+        sub: `Step ${activeIndex + 1} of ${totalSteps}`,
+      };
+    if (step === "declined") return { title: "Payment declined", onBack: null, sub: intent?.merchant };
+    return { title: "Payment complete", onBack: null, sub: intent?.merchant };
+  }, [step, intent, flow, totalSteps, activeIndex]);
+
+  const resolveDetail = useCallback(
+    (item) =>
+      typeof item.detail === "function"
+        ? item.detail({ amount, merchant: intent?.merchant ?? "the merchant" })
+        : item.detail,
+    [amount, intent?.merchant],
+  );
 
   /* No intent means there is nothing to pay for. Returning null instead of
      rendering an empty review step keeps a "Pay ₹0" bar out of the DOM while
@@ -344,8 +516,8 @@ export default function CheckoutSheet({
           <div className="flex items-center gap-3 border-b border-hairline px-5 py-3.5">
             <div className="min-w-0 flex-1">
               <p className="truncate text-[15px] font-semibold text-ink">{header.title}</p>
-              {intent?.merchant && step !== "result" && (
-                <p className="truncate text-[13px] text-steel">{intent.merchant}</p>
+              {header.sub && step !== "result" && (
+                <p className="truncate text-[13px] text-steel">{header.sub}</p>
               )}
             </div>
             {header.onBack && (
@@ -388,7 +560,7 @@ export default function CheckoutSheet({
                         )}
                       </span>
                       <span className="t-num shrink-0 text-[14px] text-charcoal">
-                        {formatPaise(item.amount)}
+                        {money(item.amount)}
                       </span>
                     </li>
                   ))}
@@ -397,11 +569,11 @@ export default function CheckoutSheet({
                 <dl className="mt-4 space-y-1.5">
                   <div className="flex items-baseline justify-between">
                     <dt className="text-[13px] text-steel">Amount due</dt>
-                    <dd className="t-num text-[15px] font-semibold text-ink">{formatPaise(amount)}</dd>
+                    <dd className="t-num text-[15px] font-semibold text-ink">{money(amount)}</dd>
                   </div>
                   <div className="flex items-baseline justify-between">
                     <dt className="text-[13px] text-steel">Available balance</dt>
-                    <dd className="t-num text-[13px] text-charcoal">{formatPaise(wallet?.cashBalance ?? 0)}</dd>
+                    <dd className="t-num text-[13px] text-charcoal">{money(wallet?.cashBalance ?? 0)}</dd>
                   </div>
                   <div className="flex items-baseline justify-between border-t border-hairline pt-1.5">
                     <dt className="text-[13px] text-steel">Balance after payment</dt>
@@ -410,18 +582,22 @@ export default function CheckoutSheet({
                         shortfall ? "text-[var(--semantic-error)]" : "text-charcoal"
                       }`}
                     >
-                      {formatPaise(Math.max(0, balanceAfter))}
+                      {money(Math.max(0, balanceAfter))}
                     </dd>
                   </div>
                 </dl>
 
-                {/* Method picker */}
+                {/* Method picker. Each one names its own sequence length, so the
+                    cost of choosing UPI — ten beats instead of five — is visible
+                    before it is paid. */}
                 <p className="mt-5 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone">
                   Pay with
                 </p>
                 <div className="mt-2 grid gap-2">
                   {methods.map((option) => {
                     const selected = option.id === method;
+                    const optionFlow = flowFor(option.id);
+                    const beats = sequenceFor(optionFlow).length;
                     return (
                       <button
                         key={option.id}
@@ -448,6 +624,9 @@ export default function CheckoutSheet({
                           <span className="block text-[12px] leading-[1.4] text-steel">
                             {option.hint}
                           </span>
+                        </span>
+                        <span className="t-num shrink-0 text-[11px] text-stone">
+                          {beats} steps
                         </span>
                         <span
                           aria-hidden="true"
@@ -478,69 +657,107 @@ export default function CheckoutSheet({
 
             {/* ---------------- PIN ---------------- */}
             {step === "pin" && (
-              <PinPad
-                key={pinMode}
-                mode={pinMode}
-                amount={pinMode === "enter" ? amount : undefined}
-                merchant={intent?.merchant}
-                busy={busy}
-                errorMessage={error?.message ?? ""}
-                errorNonce={errorNonce}
-                lockedUntil={lockedUntil}
-                onSubmit={onPinSubmit}
-                onCancel={requestClose}
-              />
+              <div>
+                <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-hairline bg-surface-soft px-3.5 py-2.5">
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-canvas text-charcoal">
+                    <CatalogIcon name="LockKey" size={13} />
+                  </span>
+                  <span className="t-num shrink-0 text-[12px] font-semibold text-charcoal">
+                    Step {flow.prelude.length + 1} of {totalSteps}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[12px] text-steel">
+                    {flow.pin.hint}
+                  </span>
+                </div>
+                <PinPad
+                  key={pinMode}
+                  mode={pinMode}
+                  amount={pinMode === "enter" ? amount : undefined}
+                  merchant={intent?.merchant}
+                  busy={busy}
+                  errorMessage={error?.message ?? ""}
+                  errorNonce={errorNonce}
+                  lockedUntil={lockedUntil}
+                  onSubmit={onPinSubmit}
+                  onCancel={requestClose}
+                />
+              </div>
             )}
 
-            {/* ---------------- Processing ---------------- */}
+            {/* ---------------- Sequence ---------------- */}
             {step === "processing" && (
-              <div className="py-2" aria-live="polite">
-                <p className="t-num text-center text-[32px] font-semibold tracking-[-0.02em] text-ink">
-                  {formatPaise(amount)}
+              <div className="py-1" aria-live="polite">
+                <p className="t-num text-center text-[30px] font-semibold tracking-[-0.02em] text-ink">
+                  {money(amount)}
                 </p>
                 {intent?.merchant && (
                   <p className="mt-1 text-center text-sm text-steel">{intent.merchant}</p>
                 )}
 
-                <div className="mt-6 h-1 w-full overflow-hidden rounded-full bg-hairline-soft">
-                  <span className="t-processing-bar relative block h-full w-full overflow-hidden" />
+                <div className="mt-5 flex items-center justify-between">
+                  <span className="t-num text-[12px] font-semibold text-charcoal">
+                    Step {activeIndex + 1} of {totalSteps}
+                  </span>
+                  <span className="text-[12px] text-stone">{flow.label}</span>
                 </div>
 
-                <ol className="mt-5 grid gap-2.5">
-                  {STAGES.map((item, index) => {
-                    const done = index < stage;
-                    const active = index === stage;
+                <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-hairline-soft">
+                  <span
+                    className="block h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
+                    style={{ width: `${((activeIndex + 1) / totalSteps) * 100}%` }}
+                  />
+                </div>
+
+                <ol className="mt-4 grid gap-1">
+                  {sequence.map((item, index) => {
+                    const done = index < activeIndex;
+                    const active = index === activeIndex;
+                    const detail = resolveDetail(item);
                     return (
                       <li
-                        key={item.label}
-                        className={`flex items-center gap-3 text-sm transition-opacity ${
-                          done || active ? "opacity-100" : "opacity-40"
-                        }`}
+                        key={`${item.label}-${index}`}
+                        ref={active ? activeRef : null}
+                        className={`flex items-start gap-3 rounded-lg px-2 py-1.5 transition-colors ${
+                          active ? "bg-surface-soft" : ""
+                        } ${done || active ? "opacity-100" : "opacity-45"}`}
                       >
                         <span
-                          className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${
+                          className={`t-num mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold ${
                             done
-                              ? "bg-tint-mint text-success"
+                              ? "bg-success text-white"
                               : active
-                                ? "bg-surface text-charcoal"
-                                : "bg-surface-soft text-stone"
+                                ? "bg-primary text-white"
+                                : "bg-surface text-stone"
                           }`}
                         >
-                          {done ? (
-                            <CheckCircle size={16} weight="fill" />
-                          ) : (
-                            <CatalogIcon name={item.icon} size={15} />
+                          {done ? <CheckCircle size={12} weight="fill" /> : index + 1}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={`block text-[13px] leading-[1.35] ${
+                              done ? "text-steel" : active ? "font-medium text-charcoal" : "text-steel"
+                            }`}
+                          >
+                            {item.label}
+                          </span>
+                          {detail && index <= activeIndex && (
+                            <span className="t-num block text-[11px] leading-[1.4] text-stone">
+                              {detail}
+                            </span>
                           )}
                         </span>
-                        <span className={done ? "text-steel" : "font-medium text-charcoal"}>
-                          {item.label}
-                        </span>
+                        {active && (
+                          <span
+                            aria-hidden="true"
+                            className="t-processing-dot mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+                          />
+                        )}
                       </li>
                     );
                   })}
                 </ol>
 
-                <p className="mt-5 flex items-center justify-center gap-1.5 text-[12px] text-stone">
+                <p className="mt-4 flex items-center justify-center gap-1.5 text-[12px] text-stone">
                   <ShieldCheck size={14} weight="fill" className="text-success" />
                   Secured by your Wealthify PIN
                 </p>
@@ -566,19 +783,19 @@ export default function CheckoutSheet({
                     <div className="flex items-baseline justify-between">
                       <dt className="text-[13px] text-steel">Available</dt>
                       <dd className="t-num text-[13px] text-charcoal">
-                        {formatPaise(error.details.available)}
+                        {money(error.details.available)}
                       </dd>
                     </div>
                     <div className="flex items-baseline justify-between">
                       <dt className="text-[13px] text-steel">Required</dt>
                       <dd className="t-num text-[13px] text-charcoal">
-                        {formatPaise(error.details.required)}
+                        {money(error.details.required)}
                       </dd>
                     </div>
                     <div className="flex items-baseline justify-between border-t border-hairline pt-1.5">
                       <dt className="text-[13px] font-medium text-charcoal">Short by</dt>
                       <dd className="t-num text-[13px] font-semibold text-[var(--semantic-error)]">
-                        {formatPaise(error.details.shortfall)}
+                        {money(error.details.shortfall)}
                       </dd>
                     </div>
                   </dl>
@@ -598,6 +815,7 @@ export default function CheckoutSheet({
                     type="button"
                     onClick={() => {
                       setError(null);
+                      setMethod(method === "upi" ? "balance" : method);
                       setStep("review");
                     }}
                     className="btn-ghost focus-ring rounded-lg border border-hairline px-4 py-2.5 text-sm font-medium"
@@ -624,25 +842,22 @@ export default function CheckoutSheet({
               {shortfall > 0 && (
                 <p className="mb-2.5 flex items-start gap-2 text-[13px] leading-[1.5] text-[var(--semantic-error)]">
                   <WarningCircle size={16} weight="fill" className="mt-0.5 shrink-0" />
-                  You are {formatPaise(shortfall)} short. Earn more or pick something cheaper.
+                  You are {money(shortfall)} short. Earn more or pick something cheaper.
                 </p>
               )}
               <button
                 type="button"
                 disabled={!canPay}
-                onClick={() => {
-                  if (!hasPin) setPinMode("create");
-                  setStep("pin");
-                }}
+                onClick={beginPayment}
                 className="btn-primary focus-ring flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <LockKey size={16} weight="bold" />
-                <span className="t-num">Pay {formatPaise(amount)}</span>
+                <span className="t-num">Pay {money(amount)}</span>
               </button>
               <p className="mt-2.5 text-center text-[12px] text-stone">
                 {hasPin
-                  ? "You will confirm this with your 4-digit PIN."
-                  : "First payment: you will create a 4-digit PIN."}
+                  ? `${totalSteps} steps · you will confirm with your 4-digit PIN`
+                  : "First payment: you will create a 4-digit PIN"}
               </p>
             </div>
           )}

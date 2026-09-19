@@ -54,7 +54,12 @@ const userSchema = new mongoose.Schema(
     taskDay: { type: String, default: "" },
     tasksToday: { type: Number, default: 0, min: 0 },
     gigsThisCycle: { type: Number, default: 0, min: 0 },
-    lastGigAt: { type: Map, of: Date, default: () => new Map() },
+
+    /* Earned skills, `skillId -> level`. Stored on the user rather than in its
+       own collection because every gig projection needs all of it at once and
+       it is read on nearly every income request. Levels only ever move up, and
+       only from a settled course. */
+    skills: { type: Map, of: Number, default: () => new Map() },
   },
   { timestamps: true },
 );

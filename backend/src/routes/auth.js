@@ -4,9 +4,7 @@ import rateLimit from "express-rate-limit";
 import { STARTING_CASH_PAISE } from "../config.js";
 import { User } from "../models/User.js";
 import { Wallet } from "../models/Wallet.js";
-import { Bill } from "../models/Bill.js";
 import { Transaction } from "../models/Transaction.js";
-import { STARTER_BILLS } from "../data/expenses.js";
 import { makeReference } from "../services/ledger.js";
 import { clockJson } from "../services/clock.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -83,11 +81,7 @@ function validateSignup({ username, email, password }) {
   return fields;
 }
 
-/* A new account opens with a wallet, the immutable signup-bonus entry, and a
-   full starter month of bills already due. Seeding the bills here rather than
-   lazily on first read means the ledger and the bill list are created in the
-   same breath as the user, so there is no window where an account exists
-   without its expenses. */
+/* A new account opens with a wallet and the immutable signup-bonus entry. */
 async function openAccount(user) {
   const wallet = await Wallet.create({
     userId: user._id,
@@ -121,23 +115,6 @@ async function openAccount(user) {
       note: "Starting balance. Now go and earn the rest.",
     },
   });
-
-  await Bill.insertMany(
-    STARTER_BILLS.map((bill) => ({
-      userId: user._id,
-      key: bill.key,
-      name: bill.name,
-      category: bill.category,
-      icon: bill.icon,
-      amount: bill.amount,
-      note: bill.note,
-      // `lastPaidCycle: -1` is what makes month one due immediately.
-      dueCycle: 0,
-      lastPaidCycle: -1,
-      autopay: Boolean(bill.autopay),
-      source: "starter",
-    })),
-  );
 
   return wallet;
 }

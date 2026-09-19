@@ -1,14 +1,11 @@
 /* ----------------------------------------------------------------------------
    Recurring expenses.
 
-   Every new account is seeded with this starter set, due in cycle 0 — the
-   first month is already waiting, so the Expenses page is never an empty
-   screen and the very first decision (which bill to pay first, from a finite
-   balance) arrives immediately rather than a day later.
+  These are optional recurring-expense templates. They are kept separate from
+  account creation so a new user can begin with an empty bill list.
 
-   The starter total is deliberately close to an Intern's salary: rent plus
-   food plus utilities does not fit inside one paycheque, so the user has to
-   take freelance work or make choices. That tension is the game.
+  The starter total is deliberately close to an Intern's salary for any future
+  flow that offers the templates as a choice.
    -------------------------------------------------------------------------- */
 
 const rupees = (value) => Math.round(value * 100);

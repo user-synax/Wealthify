@@ -33,15 +33,18 @@ export default function LoginPage() {
       await login(form);
       // Refresh first so the provider is authenticated before the
       // protected route renders (avoids a bounce back to /login).
-      await refresh();
+      const session = await refresh();
+      if (!session) {
+        throw new Error("We could not start your session. Please try again.");
+      }
       router.push(safeNextTarget());
     } catch (err) {
-      if (err.code === "INVALID_CREDENTIALS") {
-        setError("Incorrect email/username or password. Try again.");
+      if (err.code === "INVALID_CREDENTIALS" || err.status === 401) {
+        setError("Incorrect email/username or password. Check both and try again.");
       } else if (err.fields?.identifier) {
         setError(err.fields.identifier);
       } else {
-        setError(err.message);
+        setError(err.message || "Unable to log in. Please try again.");
       }
     } finally {
       setPending(false);
